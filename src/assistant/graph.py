@@ -4,7 +4,8 @@ from typing_extensions import Literal
 
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_core.runnables import RunnableConfig
-from langchain_ollama import ChatOllama
+# from langchain_ollama import ChatOllama
+from langchain_google_genai import ChatGoogleGenerativeAI
 from langgraph.graph import START, END, StateGraph
 
 from assistant.configuration import Configuration, SearchAPI
@@ -16,19 +17,35 @@ from assistant.prompts import query_writer_instructions, summarizer_instructions
 def generate_query(state: SummaryState, config: RunnableConfig):
     """ Generate a query for web search """
     
-    # Format the prompt
-    query_writer_instructions_formatted = query_writer_instructions.format(research_topic=state.research_topic)
+    query_writer_instructions_formatted = (
+        query_writer_instructions.format(research_topic=state.research_topic) +
+        "\nYou must respond in the following JSON format only: {\"query\": \"your generated query here\"}"
+    )
 
-    # Generate a query
     configurable = Configuration.from_runnable_config(config)
-    llm_json_mode = ChatOllama(model=configurable.local_llm, temperature=0, format="json")
-    result = llm_json_mode.invoke(
-        [SystemMessage(content=query_writer_instructions_formatted),
-        HumanMessage(content=f"Generate a query for web search:")]
-    )   
-    query = json.loads(result.content)
+    llm_json_mode = ChatGoogleGenerativeAI(
+        model="gemini-2.0-flash-exp",  # gemini-2.0-flash-exp는 아직 공개적으로 사용할 수 없을 수 있습니다
+        temperature=0,
+        convert_system_message_to_human=True
+    )
     
-    return {"search_query": query['query']}
+    try:
+        result = llm_json_mode.invoke(
+            [SystemMessage(content=query_writer_instructions_formatted),
+            HumanMessage(content=f"Generate a query for web search:")]
+        )   
+        
+        # JSON 파싱 시도
+        try:
+            query = json.loads(result.content)
+        except json.JSONDecodeError:
+            # JSON 파싱 실패 시 직접 JSON 형식으로 변환
+            return {"search_query": result.content.strip()}
+            
+        return {"search_query": query.get('query', result.content.strip())}
+    except Exception as e:
+        print(f"Error in generate_query: {e}")
+        return {"search_query": state.research_topic}
 
 def web_research(state: SummaryState, config: RunnableConfig):
     """ Gather information from the web """
@@ -59,13 +76,9 @@ def web_research(state: SummaryState, config: RunnableConfig):
 def summarize_sources(state: SummaryState, config: RunnableConfig):
     """ Summarize the gathered sources """
     
-    # Existing summary
     existing_summary = state.running_summary
-
-    # Most recent web research
     most_recent_web_research = state.web_research_results[-1]
 
-    # Build the human message
     if existing_summary:
         human_message_content = (
             f"<User Input> \n {state.research_topic} \n <User Input>\n\n"
@@ -78,9 +91,13 @@ def summarize_sources(state: SummaryState, config: RunnableConfig):
             f"<Search Results> \n {most_recent_web_research} \n <Search Results>"
         )
 
-    # Run the LLM
     configurable = Configuration.from_runnable_config(config)
-    llm = ChatOllama(model=configurable.local_llm, temperature=0)
+    # ChatOllama를 ChatGoogleGenerativeAI로 변경
+    llm = ChatGoogleGenerativeAI(
+        model="gemini-2.0-flash-exp",
+        temperature=0,
+        convert_system_message_to_human=True
+    )
     result = llm.invoke(
         [SystemMessage(content=summarizer_instructions),
         HumanMessage(content=human_message_content)]
@@ -88,8 +105,8 @@ def summarize_sources(state: SummaryState, config: RunnableConfig):
 
     running_summary = result.content
 
-    # TODO: This is a hack to remove the <think> tags w/ Deepseek models 
-    # It appears very challenging to prompt them out of the responses 
+    # Deepseek 모델 관련 hack 부분은 Gemini에서는 필요 없을 수 있지만, 
+    # 안전을 위해 유지
     while "<think>" in running_summary and "</think>" in running_summary:
         start = running_summary.find("<think>")
         end = running_summary.find("</think>") + len("</think>")
@@ -100,27 +117,40 @@ def summarize_sources(state: SummaryState, config: RunnableConfig):
 def reflect_on_summary(state: SummaryState, config: RunnableConfig):
     """ Reflect on the summary and generate a follow-up query """
 
-    # Generate a query
+    reflection_instructions_formatted = (
+        reflection_instructions.format(research_topic=state.research_topic) +
+        "\nYou must respond in the following JSON format only: {\"follow_up_query\": \"your generated query here\"}"
+    )
+
     configurable = Configuration.from_runnable_config(config)
-    llm_json_mode = ChatOllama(model=configurable.local_llm, temperature=0, format="json")
-    result = llm_json_mode.invoke(
-        [SystemMessage(content=reflection_instructions.format(research_topic=state.research_topic)),
-        HumanMessage(content=f"Identify a knowledge gap and generate a follow-up web search query based on our existing knowledge: {state.running_summary}")]
-    )   
-    follow_up_query = json.loads(result.content)
-
-    # Get the follow-up query
-    query = follow_up_query.get('follow_up_query')
-
-    # JSON mode can fail in some cases
-    if not query:
-
-        # Fallback to a placeholder query
+    llm_json_mode = ChatGoogleGenerativeAI(
+        model="gemini-2.0-flash-exp",
+        temperature=0,
+        convert_system_message_to_human=True
+    )
+    
+    try:
+        result = llm_json_mode.invoke(
+            [SystemMessage(content=reflection_instructions_formatted),
+            HumanMessage(content=f"Identify a knowledge gap and generate a follow-up web search query based on our existing knowledge: {state.running_summary}")]
+        )   
+        
+        # JSON 파싱 시도
+        try:
+            follow_up_query = json.loads(result.content)
+            query = follow_up_query.get('follow_up_query')
+        except json.JSONDecodeError:
+            # JSON 파싱 실패 시 전체 응답을 쿼리로 사용
+            query = result.content.strip()
+            
+        if not query:
+            query = f"Tell me more about {state.research_topic}"
+            
+        return {"search_query": query}
+    except Exception as e:
+        print(f"Error in reflect_on_summary: {e}")
         return {"search_query": f"Tell me more about {state.research_topic}"}
-
-    # Update search query with follow-up query
-    return {"search_query": follow_up_query['follow_up_query']}
-
+    
 def finalize_summary(state: SummaryState):
     """ Finalize the summary """
     
