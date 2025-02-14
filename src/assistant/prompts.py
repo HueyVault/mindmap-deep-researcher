@@ -7,7 +7,7 @@ The query will gather information related to a specific topic.
 
 <FORMAT>
 Format your response as a JSON object with ALL three of these exact keys:
-   - "query": The actual search query string
+   - "query": The actual search query string (max 400 characters)
    - "aspect": The specific aspect of the topic being researched
    - "rationale": Brief explanation of why this query is relevant
 </FORMAT>
@@ -21,6 +21,7 @@ Example output:
 }}
 </EXAMPLE>
 
+Important: Ensure your query does not exceed 400 characters.
 Provide your response in JSON format:"""
 
 summarizer_instructions="""
@@ -57,13 +58,14 @@ reflection_instructions = """You are an expert research assistant analyzing a su
 </GOAL>
 
 <REQUIREMENTS>
-Ensure the follow-up question is self-contained and includes necessary context for web search.
+- Ensure the follow-up question is self-contained and includes necessary context for web search
+- The follow-up query must not exceed 400 characters
 </REQUIREMENTS>
 
 <FORMAT>
 Format your response as a JSON object with these exact keys:
 - knowledge_gap: Describe what information is missing or needs clarification
-- follow_up_query: Write a specific question to address this gap
+- follow_up_query: Write a specific question to address this gap (max 400 characters)
 </FORMAT>
 
 <EXAMPLE>
@@ -74,4 +76,5 @@ Example output:
 }}
 </EXAMPLE>
 
+Important: Keep your follow-up query under 400 characters.
 Provide your analysis in JSON format:"""
