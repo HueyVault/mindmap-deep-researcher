@@ -21,6 +21,7 @@ from ragas.llms import LangchainLLMWrapper
 from ragas.embeddings import LangchainEmbeddingsWrapper
 from ragas.run_config import RunConfig
 from ragas.metrics import faithfulness, answer_relevancy, context_precision
+from datasets import Dataset  # 추가
 
 # Nodes   
 def generate_query(state: SummaryState, config: RunnableConfig):
@@ -133,7 +134,7 @@ def init_ragas_metrics(metrics, llm, embedding=None):
         run_config = RunConfig()
         metric.init(run_config)
 
-def evaluate_summary(summary: str, sources: str):
+def evaluate_summary(user_input: str, summary: str, sources: str):
     """RAGAS를 사용하여 요약을 평가합니다."""
     # LLM 초기화
     gemini = ChatGoogleGenerativeAI(
@@ -142,11 +143,15 @@ def evaluate_summary(summary: str, sources: str):
         convert_system_message_to_human=True
     )
     
-    gemini_embeddings = GoogleGenerativeAIEmbeddings(model="text-embedding-004")
+    # Google 임베딩 모델 초기화
+    embeddings = GoogleGenerativeAIEmbeddings(
+        model="models/embedding-001"
+    )
+    
     # LLM Wrapper 생성
     llm_wrapper = LangchainLLMWrapper(gemini)
-    embeddings_wrapper = LangchainEmbeddingsWrapper(gemini_embeddings)
-
+    embeddings_wrapper = LangchainEmbeddingsWrapper(embeddings)
+    
     # 메트릭 초기화
     metrics = [
         faithfulness,
@@ -154,22 +159,32 @@ def evaluate_summary(summary: str, sources: str):
         context_precision
     ]
     
-    # 메트릭에 LLM 설정
+    # 메트릭에 LLM과 임베딩 설정
     init_ragas_metrics(metrics, llm=llm_wrapper, embedding=embeddings_wrapper)
-
     
-    # 평가 데이터셋 생성
-    eval_dataset = [{"answer": summary, "contexts": [sources]}]
+   # Dataset 객체 생성 (user_input, contexts, answer 컬럼 모두 포함)
+    eval_data = {
+        "question": [user_input], # question 컬럼에 user_input 매핑
+        "contexts": [[sources]],   # contexts 컬럼에 sources 매핑
+        "answer": [summary],      # answer 컬럼에 summary 매핑
+        "reference": [sources]  # sources를 reference로도 사용
+    }
+    eval_dataset = Dataset.from_dict(eval_data)
     
     # 평가 실행
     results = evaluate(
         eval_dataset,
         metrics=metrics
     )
+
+    # 결과 처리
+    metric_results = results.scores # EvaluationResult 객체에서 scores 속성 접근
     
+    scores = metric_results[0]
+
     # 평균 점수 계산
-    scores = results.to_dict()
-    avg_score = sum(scores.values()) / len(scores)
+    avg_score = sum(metric_results[0].values()) / len(metric_results[0]) # metric_results.values() 사용하여 평균 계산
+
     return avg_score, scores
 
 def reflect_on_summary(state: SummaryState, config: RunnableConfig):
@@ -177,7 +192,8 @@ def reflect_on_summary(state: SummaryState, config: RunnableConfig):
     
     # RAGAS 평가 수행
     latest_sources = state.web_research_results[-1] if state.web_research_results else ""
-    avg_score, scores = evaluate_summary(state.running_summary, latest_sources)
+    # user input, document, answer(summary)
+    avg_score, scores = evaluate_summary(state.research_topic, state.running_summary, latest_sources)
     
     # 평가 결과를 기록
     print(f"RAGAS Evaluation Scores: {scores}")

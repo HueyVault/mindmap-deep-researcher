@@ -5,6 +5,7 @@ langchain-ollama>=0.2.1
 langchain-google-genai
 google-generativeai
 ragas==0.2.13
+datasets
 
 [dev]
 mypy>=1.11.1

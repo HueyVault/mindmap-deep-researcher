@@ -13,6 +13,7 @@ Requires-Dist: langchain-ollama>=0.2.1
 Requires-Dist: langchain-google-genai
 Requires-Dist: google-generativeai
 Requires-Dist: ragas==0.2.13
+Requires-Dist: datasets
 Provides-Extra: dev
 Requires-Dist: mypy>=1.11.1; extra == "dev"
 Requires-Dist: ruff>=0.6.1; extra == "dev"
