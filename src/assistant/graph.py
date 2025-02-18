@@ -4,14 +4,23 @@ from typing_extensions import Literal
 
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_core.runnables import RunnableConfig
+from langchain_core.outputs import LLMResult, ChatGeneration
+
 # from langchain_ollama import ChatOllama
 from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from langgraph.graph import START, END, StateGraph
 
 from assistant.configuration import Configuration, SearchAPI
 from assistant.utils import deduplicate_and_format_sources, tavily_search, format_sources, perplexity_search
 from assistant.state import SummaryState, SummaryStateInput, SummaryStateOutput
 from assistant.prompts import query_writer_instructions, summarizer_instructions, reflection_instructions
+
+from ragas import evaluate
+from ragas.llms import LangchainLLMWrapper 
+from ragas.embeddings import LangchainEmbeddingsWrapper
+from ragas.run_config import RunConfig
+from ragas.metrics import faithfulness, answer_relevancy, context_precision
 
 # Nodes   
 def generate_query(state: SummaryState, config: RunnableConfig):
@@ -114,42 +123,106 @@ def summarize_sources(state: SummaryState, config: RunnableConfig):
 
     return {"running_summary": running_summary}
 
-def reflect_on_summary(state: SummaryState, config: RunnableConfig):
-    """ Reflect on the summary and generate a follow-up query """
+def init_ragas_metrics(metrics, llm, embedding=None):
+    """RAGAS 메트릭 초기화"""
+    for metric in metrics:
+        if hasattr(metric, 'llm'):
+            metric.llm = llm
+        if hasattr(metric, 'embeddings') and embedding:
+            metric.embeddings = embedding
+        run_config = RunConfig()
+        metric.init(run_config)
 
-    reflection_instructions_formatted = (
-        reflection_instructions.format(research_topic=state.research_topic) +
-        "\nYou must respond in the following JSON format only: {\"follow_up_query\": \"your generated query here\"}"
-    )
-
-    configurable = Configuration.from_runnable_config(config)
-    llm_json_mode = ChatGoogleGenerativeAI(
+def evaluate_summary(summary: str, sources: str):
+    """RAGAS를 사용하여 요약을 평가합니다."""
+    # LLM 초기화
+    gemini = ChatGoogleGenerativeAI(
         model="gemini-2.0-flash-exp",
         temperature=0,
         convert_system_message_to_human=True
     )
     
-    try:
-        result = llm_json_mode.invoke(
-            [SystemMessage(content=reflection_instructions_formatted),
-            HumanMessage(content=f"Identify a knowledge gap and generate a follow-up web search query based on our existing knowledge: {state.running_summary}")]
-        )   
+    gemini_embeddings = GoogleGenerativeAIEmbeddings(model="text-embedding-004")
+    # LLM Wrapper 생성
+    llm_wrapper = LangchainLLMWrapper(gemini)
+    embeddings_wrapper = LangchainEmbeddingsWrapper(gemini_embeddings)
+
+    # 메트릭 초기화
+    metrics = [
+        faithfulness,
+        answer_relevancy,
+        context_precision
+    ]
+    
+    # 메트릭에 LLM 설정
+    init_ragas_metrics(metrics, llm=llm_wrapper, embedding=embeddings_wrapper)
+
+    
+    # 평가 데이터셋 생성
+    eval_dataset = [{"answer": summary, "contexts": [sources]}]
+    
+    # 평가 실행
+    results = evaluate(
+        eval_dataset,
+        metrics=metrics
+    )
+    
+    # 평균 점수 계산
+    scores = results.to_dict()
+    avg_score = sum(scores.values()) / len(scores)
+    return avg_score, scores
+
+def reflect_on_summary(state: SummaryState, config: RunnableConfig):
+    """요약을 평가하고 다음 단계를 결정합니다."""
+    
+    # RAGAS 평가 수행
+    latest_sources = state.web_research_results[-1] if state.web_research_results else ""
+    avg_score, scores = evaluate_summary(state.running_summary, latest_sources)
+    
+    # 평가 결과를 기록
+    print(f"RAGAS Evaluation Scores: {scores}")
+    print(f"Average Score: {avg_score}")
+    
+    # 평가 점수에 따른 로직
+    if avg_score >= 0.8:  # 높은 품질
+        return {"search_query": None, "should_continue": False}
+    elif avg_score < 0.5:  # 낮은 품질
+        # 원래의 research_topic으로 새로운 쿼리 생성
+        return {"search_query": f"Detailed information about {state.research_topic}", 
+                "should_continue": True}
+    else:  # 중간 품질 - 기존 로직 사용
+        reflection_instructions_formatted = (
+            reflection_instructions.format(research_topic=state.research_topic) +
+            "\nYou must respond in the following JSON format only: {\"follow_up_query\": \"your generated query here\"}"
+        )
+
+        configurable = Configuration.from_runnable_config(config)
+        llm_json_mode = ChatGoogleGenerativeAI(
+            model="gemini-2.0-flash-exp",
+            temperature=0,
+            convert_system_message_to_human=True
+        )
         
-        # JSON 파싱 시도
         try:
-            follow_up_query = json.loads(result.content)
-            query = follow_up_query.get('follow_up_query')
-        except json.JSONDecodeError:
-            # JSON 파싱 실패 시 전체 응답을 쿼리로 사용
-            query = result.content.strip()
+            result = llm_json_mode.invoke(
+                [SystemMessage(content=reflection_instructions_formatted),
+                HumanMessage(content=f"Identify a knowledge gap and generate a follow-up web search query based on our existing knowledge: {state.running_summary}")]
+            )   
             
-        if not query:
-            query = f"Tell me more about {state.research_topic}"
-            
-        return {"search_query": query}
-    except Exception as e:
-        print(f"Error in reflect_on_summary: {e}")
-        return {"search_query": f"Tell me more about {state.research_topic}"}
+            try:
+                follow_up_query = json.loads(result.content)
+                query = follow_up_query.get('follow_up_query')
+            except json.JSONDecodeError:
+                query = result.content.strip()
+                
+            if not query:
+                query = f"Tell me more about {state.research_topic}"
+                
+            return {"search_query": query, "should_continue": True}
+        except Exception as e:
+            print(f"Error in reflect_on_summary: {e}")
+            return {"search_query": f"Tell me more about {state.research_topic}", 
+                    "should_continue": True}
     
 def finalize_summary(state: SummaryState):
     """ Finalize the summary """
@@ -160,13 +233,19 @@ def finalize_summary(state: SummaryState):
     return {"running_summary": state.running_summary}
 
 def route_research(state: SummaryState, config: RunnableConfig) -> Literal["finalize_summary", "web_research"]:
-    """ Route the research based on the follow-up query """
-
+    """RAGAS 평가 결과를 기반으로 연구 방향을 결정합니다."""
+    
     configurable = Configuration.from_runnable_config(config)
+    
+    # reflect_on_summary에서 반환된 should_continue 확인
+    if (hasattr(state, 'search_query') and 
+        state.search_query is None):  # 높은 품질로 판단됨
+        return "finalize_summary"
+    
     if state.research_loop_count <= configurable.max_web_research_loops:
         return "web_research"
     else:
-        return "finalize_summary" 
+        return "finalize_summary"
     
 # Add nodes and edges 
 builder = StateGraph(SummaryState, input=SummaryStateInput, output=SummaryStateOutput, config_schema=Configuration)
