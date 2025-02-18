@@ -2,7 +2,9 @@ import json
 
 from typing_extensions import Literal
 
-from langchain_core.messages import HumanMessage, SystemMessage
+from langchain_core.messages import HumanMessage as LangchainHumanMessage
+from langchain_core.messages import AIMessage as LangchainAIMessage
+from langchain_core.messages import SystemMessage as LangchainSystemMessage
 from langchain_core.runnables import RunnableConfig
 from langchain_core.outputs import LLMResult, ChatGeneration
 
@@ -43,8 +45,8 @@ def generate_query(state: SummaryState, config: RunnableConfig):
     
     try:
         result = llm_json_mode.invoke(
-            [SystemMessage(content=query_writer_instructions_formatted),
-            HumanMessage(content=f"Generate a query for web search:")]
+            [LangchainSystemMessage(content=query_writer_instructions_formatted),
+            LangchainHumanMessage(content=f"Generate a query for web search:")]
         )   
         
         # JSON 파싱 시도
@@ -111,8 +113,8 @@ def summarize_sources(state: SummaryState, config: RunnableConfig):
         convert_system_message_to_human=True
     )
     result = llm.invoke(
-        [SystemMessage(content=summarizer_instructions),
-        HumanMessage(content=human_message_content)]
+        [LangchainSystemMessage(content=summarizer_instructions),
+        LangchainHumanMessage(content=human_message_content)]
     )
 
     running_summary = result.content
@@ -199,46 +201,71 @@ async def evaluate_search_direction(state: SummaryState, config: RunnableConfig)
         convert_system_message_to_human=True
     )
     
-    llm_wrapper = LangchainLLMWrapper(gemini)
+    # Google 임베딩 모델 초기화
+    embeddings = GoogleGenerativeAIEmbeddings(
+        model="models/embedding-001"
+    )
     
-    # 대화 히스토리 구성
+    # Wrapper 생성
+    llm_wrapper = LangchainLLMWrapper(gemini)
+    embeddings_wrapper = LangchainEmbeddingsWrapper(embeddings)
+    
+    # RAGAS 메시지로 변환
+    from ragas.messages import HumanMessage as RagasHumanMessage
+    from ragas.messages import AIMessage as RagasAIMessage
+    
     conversation = [
-        HumanMessage(content=state.research_topic),  # 초기 연구 주제
-        AIMessage(content=state.search_query),       # 생성된 검색 쿼리
+        RagasHumanMessage(content=state.research_topic),
+        RagasAIMessage(content=state.search_query)
     ]
     
     # 주제 일관성 평가를 위한 샘플 생성
     sample = MultiTurnSample(
         user_input=conversation,
-        reference_topics=[state.research_topic]  # 원래 연구 주제를 reference topic으로 사용
+        reference_topics=[state.research_topic]
     )
     
     # TopicAdherence 평가
     topic_scorer = TopicAdherenceScore(llm=llm_wrapper, mode="precision")
     topic_score = await topic_scorer.multi_turn_ascore(sample)
     
+    # 기본 메트릭 초기화
+    metrics = [
+        faithfulness,
+        answer_relevancy,
+        context_precision
+    ]
+    
+    # 메트릭에 LLM과 임베딩 설정
+    init_ragas_metrics(metrics, llm=llm_wrapper, embedding=embeddings_wrapper)
+    
     # RAGAS 기본 메트릭 평가
     eval_data = {
         "answer": [state.running_summary],
         "contexts": [state.web_research_results],
-        "user_input": [state.research_topic],
+        "question": [state.research_topic],  # "user_input" 대신 "question" 사용
         "reference": [state.web_research_results[-1] if state.web_research_results else ""]
     }
+    
     eval_dataset = Dataset.from_dict(eval_data)
     
     basic_results = evaluate(
         eval_dataset,
-        metrics=[faithfulness, answer_relevancy, context_precision]
+        metrics=metrics  # 초기화된 메트릭 사용
     )
 
     print(f'basic_results : {basic_results}')
     
+    # 결과 처리
+    metric_results = basic_results.scores  # EvaluationResult 객체에서 scores 속성 접근
+    scores = metric_results[0]  # 첫 번째 결과 가져오기
+    
     # 종합 평가 결과
     evaluation_summary = {
         "topic_adherence": float(topic_score),
-        "faithfulness": float(basic_results["faithfulness"]),
-        "answer_relevancy": float(basic_results["answer_relevancy"]),
-        "context_precision": float(basic_results["context_precision"])
+        "faithfulness": scores["faithfulness"],
+        "answer_relevancy": scores["answer_relevancy"],
+        "context_precision": scores["context_precision"]
     }
     
     # 평균 점수 계산
@@ -257,40 +284,37 @@ async def evaluate_search_direction(state: SummaryState, config: RunnableConfig)
         위 평가 결과를 바탕으로 원래 연구 주제에 더 부합하는 새로운 검색 쿼리를 생성해주세요.
         """
         
-        result = gemini.invoke([SystemMessage(content=improvement_prompt)])
+        result = gemini.invoke([LangchainSystemMessage(content=improvement_prompt)])
         new_query = result.content.strip()
         return {"search_query": new_query, "should_continue": True}
     else:
         return {"search_query": state.search_query, "should_continue": True}
     
-def reflect_on_summary(state: SummaryState, config: RunnableConfig):
+async def reflect_on_summary(state: SummaryState, config: RunnableConfig):
     """요약을 평가하고 다음 단계를 결정합니다."""
     
     latest_query = state.search_query
     latest_sources = state.web_research_results[-1] if state.web_research_results else ""
     
-    # 검색 방향성 평가
-    evaluation_result = evaluate_search_direction(state, config)
+    # await 추가
+    evaluation_result = await evaluate_search_direction(state, config)
     
     print(f"Search Direction Evaluation: {evaluation_result}")
     
     # 평가 결과에 따라 다음 단계 결정
     if evaluation_result["should_continue"]:
         if evaluation_result["search_query"] != latest_query:
-            # 새로운 쿼리가 제안된 경우
             print(f"Updating search query from '{latest_query}' to '{evaluation_result['search_query']}'")
             return {
                 "search_query": evaluation_result["search_query"],
                 "should_continue": True
             }
         else:
-            # 현재 쿼리가 적절한 경우
             return {
                 "search_query": latest_query,
                 "should_continue": True
             }
     else:
-        # 검색 중단이 필요한 경우
         return {
             "should_continue": False,
             "final_summary": state.running_summary
