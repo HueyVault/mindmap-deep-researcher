@@ -20,7 +20,9 @@ from ragas import evaluate
 from ragas.llms import LangchainLLMWrapper 
 from ragas.embeddings import LangchainEmbeddingsWrapper
 from ragas.run_config import RunConfig
-from ragas.metrics import faithfulness, answer_relevancy, context_precision
+from ragas.metrics import faithfulness, answer_relevancy, context_precision, TopicAdherenceScore
+from ragas.messages import HumanMessage, AIMessage
+from ragas.dataset_schema import MultiTurnSample
 from datasets import Dataset  # 추가
 
 # Nodes   
@@ -187,58 +189,112 @@ def evaluate_summary(user_input: str, summary: str, sources: str):
 
     return avg_score, scores
 
+async def evaluate_search_direction(state: SummaryState, config: RunnableConfig):
+    """검색 방향성을 평가합니다."""
+    
+    # LLM 초기화
+    gemini = ChatGoogleGenerativeAI(
+        model="gemini-2.0-flash-exp",
+        temperature=0,
+        convert_system_message_to_human=True
+    )
+    
+    llm_wrapper = LangchainLLMWrapper(gemini)
+    
+    # 대화 히스토리 구성
+    conversation = [
+        HumanMessage(content=state.research_topic),  # 초기 연구 주제
+        AIMessage(content=state.search_query),       # 생성된 검색 쿼리
+    ]
+    
+    # 주제 일관성 평가를 위한 샘플 생성
+    sample = MultiTurnSample(
+        user_input=conversation,
+        reference_topics=[state.research_topic]  # 원래 연구 주제를 reference topic으로 사용
+    )
+    
+    # TopicAdherence 평가
+    topic_scorer = TopicAdherenceScore(llm=llm_wrapper, mode="precision")
+    topic_score = await topic_scorer.multi_turn_ascore(sample)
+    
+    # RAGAS 기본 메트릭 평가
+    eval_data = {
+        "answer": [state.running_summary],
+        "contexts": [state.web_research_results],
+        "user_input": [state.research_topic],
+        "reference": [state.web_research_results[-1] if state.web_research_results else ""]
+    }
+    eval_dataset = Dataset.from_dict(eval_data)
+    
+    basic_results = evaluate(
+        eval_dataset,
+        metrics=[faithfulness, answer_relevancy, context_precision]
+    )
+
+    print(f'basic_results : {basic_results}')
+    
+    # 종합 평가 결과
+    evaluation_summary = {
+        "topic_adherence": float(topic_score),
+        "faithfulness": float(basic_results["faithfulness"]),
+        "answer_relevancy": float(basic_results["answer_relevancy"]),
+        "context_precision": float(basic_results["context_precision"])
+    }
+    
+    # 평균 점수 계산
+    avg_score = sum(evaluation_summary.values()) / len(evaluation_summary)
+    
+    # 평가 결과에 따른 행동 결정
+    if avg_score >= 0.8:  # 높은 품질
+        return {"search_query": state.search_query, "should_continue": True}
+    elif avg_score < 0.5:  # 낮은 품질
+        # 새로운 쿼리 생성 로직
+        improvement_prompt = f"""
+        원래 연구 주제: {state.research_topic}
+        현재 검색 쿼리: {state.search_query}
+        평가 결과: {evaluation_summary}
+        
+        위 평가 결과를 바탕으로 원래 연구 주제에 더 부합하는 새로운 검색 쿼리를 생성해주세요.
+        """
+        
+        result = gemini.invoke([SystemMessage(content=improvement_prompt)])
+        new_query = result.content.strip()
+        return {"search_query": new_query, "should_continue": True}
+    else:
+        return {"search_query": state.search_query, "should_continue": True}
+    
 def reflect_on_summary(state: SummaryState, config: RunnableConfig):
     """요약을 평가하고 다음 단계를 결정합니다."""
     
-    # RAGAS 평가 수행
+    latest_query = state.search_query
     latest_sources = state.web_research_results[-1] if state.web_research_results else ""
-    # user input, document, answer(summary)
-    avg_score, scores = evaluate_summary(state.research_topic, state.running_summary, latest_sources)
     
-    # 평가 결과를 기록
-    print(f"RAGAS Evaluation Scores: {scores}")
-    print(f"Average Score: {avg_score}")
+    # 검색 방향성 평가
+    evaluation_result = evaluate_search_direction(state, config)
     
-    # 평가 점수에 따른 로직
-    if avg_score >= 0.8:  # 높은 품질
-        return {"search_query": None, "should_continue": False}
-    elif avg_score < 0.5:  # 낮은 품질
-        # 원래의 research_topic으로 새로운 쿼리 생성
-        return {"search_query": f"Detailed information about {state.research_topic}", 
-                "should_continue": True}
-    else:  # 중간 품질 - 기존 로직 사용
-        reflection_instructions_formatted = (
-            reflection_instructions.format(research_topic=state.research_topic) +
-            "\nYou must respond in the following JSON format only: {\"follow_up_query\": \"your generated query here\"}"
-        )
-
-        configurable = Configuration.from_runnable_config(config)
-        llm_json_mode = ChatGoogleGenerativeAI(
-            model="gemini-2.0-flash-exp",
-            temperature=0,
-            convert_system_message_to_human=True
-        )
-        
-        try:
-            result = llm_json_mode.invoke(
-                [SystemMessage(content=reflection_instructions_formatted),
-                HumanMessage(content=f"Identify a knowledge gap and generate a follow-up web search query based on our existing knowledge: {state.running_summary}")]
-            )   
-            
-            try:
-                follow_up_query = json.loads(result.content)
-                query = follow_up_query.get('follow_up_query')
-            except json.JSONDecodeError:
-                query = result.content.strip()
-                
-            if not query:
-                query = f"Tell me more about {state.research_topic}"
-                
-            return {"search_query": query, "should_continue": True}
-        except Exception as e:
-            print(f"Error in reflect_on_summary: {e}")
-            return {"search_query": f"Tell me more about {state.research_topic}", 
-                    "should_continue": True}
+    print(f"Search Direction Evaluation: {evaluation_result}")
+    
+    # 평가 결과에 따라 다음 단계 결정
+    if evaluation_result["should_continue"]:
+        if evaluation_result["search_query"] != latest_query:
+            # 새로운 쿼리가 제안된 경우
+            print(f"Updating search query from '{latest_query}' to '{evaluation_result['search_query']}'")
+            return {
+                "search_query": evaluation_result["search_query"],
+                "should_continue": True
+            }
+        else:
+            # 현재 쿼리가 적절한 경우
+            return {
+                "search_query": latest_query,
+                "should_continue": True
+            }
+    else:
+        # 검색 중단이 필요한 경우
+        return {
+            "should_continue": False,
+            "final_summary": state.running_summary
+        }
     
 def finalize_summary(state: SummaryState):
     """ Finalize the summary """
