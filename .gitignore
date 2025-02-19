@@ -4,6 +4,17 @@
 ollama.log
 # Python
 __pycache__/
+
 # LangGraph
 .langgraph_api/
 *.pckl
+
+# Logs
+nohup.out
+*.log
+
+# Python packaging
+*.egg-info/
+dist/
+build/
+
