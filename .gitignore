@@ -4,3 +4,6 @@
 ollama.log
 # Python
 __pycache__/
+# LangGraph
+.langgraph_api/
+*.pckl
