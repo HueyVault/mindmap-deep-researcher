@@ -2,5 +2,5 @@
 .venv
 .env
 ollama.log
-/apps/ollama-deep-researcher/src/assistant/__pycache__
-*.pyc
+# Python
+__pycache__/
