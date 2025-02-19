@@ -269,7 +269,6 @@ def finalize_summary(state: SummaryState):
 
 def review_summary(state: SummaryState, config: RunnableConfig):
     """Review and refine the current summary for relevance and coherence"""
-    
     review_instructions_formatted = review_instructions.format(
         research_topic=state.research_topic
     )
@@ -288,7 +287,15 @@ def review_summary(state: SummaryState, config: RunnableConfig):
         )
         
         try:
-            review_result = json.loads(result.content)
+            # 코드 블록 마커 제거
+            content = result.content
+            if content.startswith("```json"):
+                content = content[7:]  # "```json" 제거
+            if content.endswith("```"):
+                content = content[:-3]  # "```" 제거
+            content = content.strip()
+            
+            review_result = json.loads(content)
             
             # 리뷰 결과 저장
             save_research_process(
@@ -305,13 +312,15 @@ def review_summary(state: SummaryState, config: RunnableConfig):
             
             return {"running_summary": review_result['refined_summary']}
             
-        except json.JSONDecodeError:
+        except json.JSONDecodeError as e:
             print(f"Error parsing JSON response: {result.content}")
+            print(f"JSON error details: {str(e)}")
             return {"running_summary": state.running_summary}
             
     except Exception as e:
         print(f"Error in review_summary: {e}")
         return {"running_summary": state.running_summary}
+
     
 def route_research(state: SummaryState) -> Literal["web_research", "review_summary", "finalize_summary"]:
     """웹 검색 진행 중 다음 단계를 결정
