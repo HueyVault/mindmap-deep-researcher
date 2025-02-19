@@ -15,7 +15,7 @@ class SearchAPI(Enum):
 class Configuration:
     """The configurable fields for the research assistant."""
     max_web_research_loops: int = 2
-    local_llm: str = "deepseek-r1:8b"
+    local_llm: str = "gemini-2.0-flash-exp" # "deepseek-r1:8b"
     search_api: SearchAPI = SearchAPI.TAVILY  # Default to TAVILY
 
     @classmethod
