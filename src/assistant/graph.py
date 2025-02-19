@@ -9,9 +9,31 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 from langgraph.graph import START, END, StateGraph
 
 from assistant.configuration import Configuration, SearchAPI
-from assistant.utils import deduplicate_and_format_sources, tavily_search, format_sources, perplexity_search, save_research_process, clear_session_files
-from assistant.state import SummaryState, SummaryStateInput, SummaryStateOutput
-from assistant.prompts import query_writer_instructions, summarizer_instructions, reflection_instructions
+
+# Core utilities
+from assistant.utils import (
+    deduplicate_and_format_sources,
+    tavily_search,
+    format_sources,
+    perplexity_search,
+    save_research_process,
+    clear_session_files
+)
+
+# State management
+from assistant.state import (
+    SummaryState,
+    SummaryStateInput,
+    SummaryStateOutput
+)
+
+# Prompts
+from assistant.prompts import (
+    query_writer_instructions,
+    summarizer_instructions,
+    reflection_instructions,
+    review_instructions
+)
 
 def generate_query(state: SummaryState, config: RunnableConfig):
     """ Generate a query for web search """
@@ -90,6 +112,36 @@ def web_research(state: SummaryState, config: RunnableConfig):
             "research_loop_count": state.research_loop_count + 1, 
             "web_research_results": [search_str]}
 
+
+from tenacity import (
+    retry,
+    stop_after_attempt,
+    wait_exponential
+)
+import time
+from functools import wraps
+
+def rate_limit(delay=1):
+    """Simple rate limiting decorator"""
+    def decorator(func):
+        last_called = [0]  # 마지막 호출 시간
+        
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            elapsed = time.time() - last_called[0]
+            if elapsed < delay:
+                time.sleep(delay - elapsed)
+            result = func(*args, **kwargs)
+            last_called[0] = time.time()
+            return result
+        return wrapper
+    return decorator
+
+@rate_limit(delay=2)
+@retry(
+    stop=stop_after_attempt(3),
+    wait=wait_exponential(multiplier=1, min=4, max=10)
+)
 def summarize_sources(state: SummaryState, config: RunnableConfig):
     """ Summarize the gathered sources """
     
@@ -112,7 +164,9 @@ def summarize_sources(state: SummaryState, config: RunnableConfig):
     llm = ChatGoogleGenerativeAI(
         model="gemini-2.0-flash-exp",
         temperature=0,
-        convert_system_message_to_human=True
+        convert_system_message_to_human=True,
+        max_retries=3,  # 재시도 횟수
+        retry_delay=2,  # 재시도 간 대기 시간(초)
     )
     
     # 요약 시작 기록
@@ -212,34 +266,10 @@ def finalize_summary(state: SummaryState):
     )
     
     return {"running_summary": final_summary}
+
 def review_summary(state: SummaryState, config: RunnableConfig):
     """Review and refine the current summary for relevance and coherence"""
     
-    review_instructions = """당신은 연구 내용을 검토하고 개선하는 전문 편집자입니다.
-
-<목표>
-1. 현재까지의 요약을 평가하고 개선
-2. 연구 주제와의 관련성 검증
-3. 핵심 내용 재정리
-
-<평가 기준>
-1. 주제 관련성: 모든 내용이 연구 주제와 직접적으로 관련되어야 함
-2. 논리적 구조: 내용이 논리적으로 연결되고 잘 구조화되어야 함
-3. 정보의 품질: 중복되거나 불필요한 내용 제거
-
-<출력 형식>
-다음 키를 포함하는 JSON 객체로 응답:
-{
-    "evaluation": {
-        "relevance": "주제 관련성 평가 (0-10)",
-        "coherence": "논리적 구조 평가 (0-10)",
-        "issues": ["개선이 필요한 부분들"]
-    },
-    "refined_summary": "개선된 요약 내용",
-    "removed_content": ["제거된 내용과 이유"]
-}
-"""
-
     review_instructions_formatted = review_instructions.format(
         research_topic=state.research_topic
     )
@@ -254,8 +284,7 @@ def review_summary(state: SummaryState, config: RunnableConfig):
     try:
         result = llm_json_mode.invoke(
             [SystemMessage(content=review_instructions_formatted),
-             HumanMessage(content=f"연구 주제: {state.research_topic}\n\n"
-                                 f"현재 요약:\n{state.running_summary}")]
+             HumanMessage(content=f"현재 요약:\n{state.running_summary}")]
         )
         
         try:
@@ -265,13 +294,13 @@ def review_summary(state: SummaryState, config: RunnableConfig):
             save_research_process(
                 state,
                 "Summary Review",
-                f"Evaluation:\n"
-                f"- Relevance Score: {review_result['evaluation']['relevance']}/10\n"
-                f"- Coherence Score: {review_result['evaluation']['coherence']}/10\n"
-                f"- Issues Identified: {', '.join(review_result['evaluation']['issues'])}\n\n"
-                f"Removed Content:\n"
+                f"평가 결과:\n"
+                f"- 주제 관련성: {review_result['evaluation']['relevance']}/10\n"
+                f"- 논리적 구조: {review_result['evaluation']['coherence']}/10\n"
+                f"- 개선 필요 사항: {', '.join(review_result['evaluation']['issues'])}\n\n"
+                f"제거된 내용:\n"
                 f"{json.dumps(review_result['removed_content'], indent=2, ensure_ascii=False)}\n\n"
-                f"Refined Summary:\n{review_result['refined_summary']}"
+                f"개선된 요약:\n{review_result['refined_summary']}"
             )
             
             return {"running_summary": review_result['refined_summary']}
@@ -299,7 +328,7 @@ def route_research(state: SummaryState) -> Literal["web_research", "review_summa
         return "review_summary"
     return "web_research"
 
-def route_after_review(state: SummaryState) -> Literal["generate_query", "finalize_summary"]:
+def route_after_review(state: SummaryState) -> Literal["web_research", "finalize_summary"]:
     """리뷰 후 다음 단계를 결정
     
     research_loop_count:
@@ -308,7 +337,7 @@ def route_after_review(state: SummaryState) -> Literal["generate_query", "finali
     """
     if state.research_loop_count >= 6:  # 6회 이상이면 종료
         return "finalize_summary"
-    return "generate_query"  # 그 외에는 다시 검색
+    return "web_research"  # 그 외에는 다시 검색
     
 # Add nodes and edges 
 builder = StateGraph(SummaryState, input=SummaryStateInput, output=SummaryStateOutput, config_schema=Configuration)
@@ -330,7 +359,7 @@ builder.add_conditional_edges(
     "reflect_on_summary",
     route_research,
     {
-        "web_research": "generate_query",
+        "web_research": "web_research",  # generate_query에서 web_research로 변경
         "review_summary": "review_summary",
         "finalize_summary": "finalize_summary"
     }
@@ -339,7 +368,7 @@ builder.add_conditional_edges(
     "review_summary",
     route_after_review,
     {
-        "generate_query": "generate_query",
+        "web_research": "web_research",  # generate_query에서 web_research로 변경
         "finalize_summary": "finalize_summary"
     }
 )
