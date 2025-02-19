@@ -4,6 +4,7 @@ from typing import Dict, Any
 from langsmith import traceable
 from tavily import TavilyClient
 from assistant.state import SummaryState  # 이 줄을 추가
+from datetime import datetime
 
 def deduplicate_and_format_sources(search_response, max_tokens_per_source, include_raw_content=False):
     """
@@ -165,36 +166,49 @@ def perplexity_search(query: str, perplexity_search_loop_count: int) -> Dict[str
     return {"results": results}
 
 
+# 전역 변수로 세션별 파일 경로 저장
+_session_files: Dict[str, str] = {}
+
 def save_research_process(state: SummaryState, step_name: str, step_content: str = None):
-    """Save each step of the research process to a file.
+    """Save each step of the research process to a file, one file per research session.
     
     Args:
         state (SummaryState): The current state
         step_name (str): Name of the current step (e.g., 'query', 'search_results')
         step_content (str, optional): Additional content to save
     """
-    from datetime import datetime
-    import os
+    # 연구 주제를 해시값으로 변환하여 세션 ID로 사용
+    session_id = hash(state.research_topic)
     
-    # 연구 주제를 기반으로 파일명 생성 (특수문자 제거 및 공백을 언더스코어로 변환)
-    topic_slug = "".join(c if c.isalnum() else "_" for c in state.research_topic)[:30]
-    filename = f"{topic_slug}_research_process.md"
+    # 이 세션의 첫 저장인 경우 새 파일 생성
+    if session_id not in _session_files:
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        topic_slug = "".join(c if c.isalnum() else "_" for c in state.research_topic)[:30]
+        filename = f"{topic_slug}_{timestamp}_research_process.md"
+        
+        os.makedirs('research_results', exist_ok=True)
+        filepath = os.path.join('research_results', filename)
+        _session_files[session_id] = filepath
+        
+        # 새 파일 생성 및 헤더 작성
+        with open(filepath, 'w', encoding='utf-8') as f:
+            f.write(f"# Research Process: {state.research_topic}\n")
+            f.write(f"Started at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n")
+            
+        print(f"\nNew research session started. Results will be saved to: {filepath}")
     
-    # 저장할 디렉토리 생성
-    os.makedirs('research_results', exist_ok=True)
-    filepath = os.path.join('research_results', filename)
+    # 현재 세션의 파일에 내용 추가
+    filepath = _session_files[session_id]
+    log_timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     
-    # 현재 시간
-    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    
-    # 저장할 내용 구성
-    content = f"\n\n## {step_name} - {timestamp}\n"
+    content = f"\n## {step_name} - {log_timestamp}\n"
     if step_content:
         content += f"{step_content}\n"
     
-    # 파일에 추가
     with open(filepath, 'a', encoding='utf-8') as f:
-        # 파일이 비어있으면 연구 주제 먼저 작성
-        if os.path.getsize(filepath) == 0:
-            f.write(f"# Research Process: {state.research_topic}\n")
         f.write(content)
+
+def clear_session_files():
+    """Clear the session files dictionary. 
+    Call this when you want to force a new file for the same topic."""
+    _session_files.clear()

@@ -9,13 +9,15 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 from langgraph.graph import START, END, StateGraph
 
 from assistant.configuration import Configuration, SearchAPI
-from assistant.utils import deduplicate_and_format_sources, tavily_search, format_sources, perplexity_search, save_research_process
+from assistant.utils import deduplicate_and_format_sources, tavily_search, format_sources, perplexity_search, save_research_process, clear_session_files
 from assistant.state import SummaryState, SummaryStateInput, SummaryStateOutput
 from assistant.prompts import query_writer_instructions, summarizer_instructions, reflection_instructions
 
 def generate_query(state: SummaryState, config: RunnableConfig):
     """ Generate a query for web search """
-    
+    # 새로운 연구 시작 시 세션 파일 초기화
+    clear_session_files()
+
     query_writer_instructions_formatted = (
         query_writer_instructions.format(research_topic=state.research_topic) +
         "\nYou must respond in the following JSON format only: {\"query\": \"your generated query here\"}"
