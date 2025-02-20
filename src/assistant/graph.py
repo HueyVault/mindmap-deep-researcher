@@ -84,19 +84,22 @@ def web_research(state: SummaryState, config: RunnableConfig):
     configurable = Configuration.from_runnable_config(config)
     search_api = configurable.search_api.value if isinstance(configurable.search_api, Enum) else configurable.search_api
 
+    # 쿼리 길이 제한 (400자)
+    search_query = state.search_query[:400] if state.search_query else state.research_topic[:400]
+
     # 검색 시작 기록
     save_research_process(
         state,
         "Web Research Step",
         f"Search API: {search_api}\n"
-        f"Search Query: {state.search_query}\n"
+        f"Search Query: {search_query}\n"
     )
 
     if search_api == "tavily":
-        search_results = tavily_search(state.search_query, include_raw_content=True, max_results=1)
+        search_results = tavily_search(search_query, include_raw_content=True, max_results=1)
         search_str = deduplicate_and_format_sources(search_results, max_tokens_per_source=1000, include_raw_content=True)
     elif search_api == "perplexity":
-        search_results = perplexity_search(state.search_query, state.research_loop_count)
+        search_results = perplexity_search(search_query, state.research_loop_count)
         search_str = deduplicate_and_format_sources(search_results, max_tokens_per_source=1000, include_raw_content=False)
     else:
         raise ValueError(f"Unsupported search API: {configurable.search_api}")
@@ -109,9 +112,15 @@ def web_research(state: SummaryState, config: RunnableConfig):
         f"Formatted Sources:\n{format_sources(search_results)}"
     )
     
-    return {"sources_gathered": [format_sources(search_results)], 
-            "research_loop_count": state.research_loop_count + 1, 
-            "web_research_results": [search_str]}
+    # SummaryState 객체 반환으로 수정
+    return SummaryState(
+        research_topic=state.research_topic,
+        web_research_results=state.web_research_results + [search_str],  # 검색 결과 누적
+        running_summary=state.running_summary,
+        needs_external_info=True,
+        research_loop_count=state.research_loop_count,
+        search_query=state.search_query
+    )
 
 
 from tenacity import (
@@ -386,120 +395,243 @@ def route_after_review(state: SummaryState) -> Literal["web_research", "finalize
         return "finalize_summary"
     return "web_research"  # 그 외에는 다시 검색
     
+def format_analysis(analysis):
+    """분석 결과를 포맷팅"""
+    findings = analysis["current_analysis"].get("findings", [])
+    if isinstance(findings, list):
+        formatted_findings = "\n".join(f"- {finding}" for finding in findings)
+    else:
+        formatted_findings = str(findings)
+    
+    return f"""## 분석 결과
+{formatted_findings}
+
+## 추론 단계
+{analysis.get('reasoning_step', '추론 단계 정보 없음')}
+"""
+
 def reason_from_sources(state: SummaryState, config: RunnableConfig):
     """주제에 대한 심층 분석 및 추론 수행"""
+    # 상태 확인을 위한 로깅 추가
+    print(f"Reasoning about topic: {state.research_topic}")
+    print(f"Current state: {state}")
     
-    # 모든 검색 결과를 통합하여 분석
-    all_research = "\n\n".join(state.web_research_results)
     existing_analysis = state.running_summary
+    current_context = state.web_research_results[-1] if state.web_research_results else ""
 
-    if existing_analysis:
-        human_message_content = (
-            f"<연구 주제>\n{state.research_topic}\n</연구 주제>\n\n"
-            f"<기존 분석>\n{existing_analysis}\n</기존 분석>\n\n"
-            f"<추가 자료>\n{state.web_research_results[-1]}\n</추가 자료>\n\n"
-            "기존 분석을 발전시켜 더 깊이 있는 통찰을 제공해주세요."
-        )
-    else:
-        human_message_content = (
-            f"<연구 주제>\n{state.research_topic}\n</연구 주제>\n\n"
-            f"<수집된 자료>\n{all_research}\n</수집된 자료>\n\n"
-            "주제에 대한 심층적인 분석을 제공해주세요."
-        )
+    # 추론 지시사항 수정
+    reasoning_prompt = """당신은 주어진 주제에 대해 심층적인 분석과 추론을 수행하는 전문 연구원입니다.
+
+현재 진행 상황: {current_iteration}/5회차
+※ 웹 검색은 최대 5회만 가능하므로, 효율적인 정보 수집이 매우 중요합니다.
+
+추론 시 다음을 고려해주세요:
+1. 현재까지 수집된 정보의 충분성
+2. 남은 웹 검색 기회 내에서 필요한 추가 정보의 우선순위
+3. 정보가 충분하다면 최종 결론 도출
+
+추론 중 추가 정보가 필요하다면 다음 특수 토큰을 사용하여 요청할 수 있습니다:
+- <SEARCH>검색어</SEARCH> : 웹 검색 요청 (최대 400자)
+- <MINDMAP>질의</MINDMAP> : 마인드맵 조회 요청
+
+※ 제한된 검색 횟수를 고려하여 검색어를 신중하게 선택해주세요.
+※ 마지막 회차에서는 반드시 최종 결론을 도출해야 합니다.
+
+중요: 반드시 아래 JSON 형식으로만 응답해주세요. 다른 텍스트나 설명을 추가하지 마세요."""
+
+    human_message = (
+        f"<연구 주제>\n{state.research_topic}\n</연구 주제>\n\n"
+        f"<현재 맥락>\n{current_context}\n</현재 맥락>\n\n"
+        f"<기존 분석>\n{existing_analysis or '아직 분석이 없습니다.'}\n</기존 분석>\n\n"
+        f"<남은 검색 횟수>\n{5 - (state.research_loop_count or 0)}회\n</남은 검색 횟수>\n\n"
+        f"""응답 형식:
+{{
+    "reasoning_step": "현재 추론 단계 설명",
+    "current_analysis": {{
+        "findings": ["현재까지의 발견사항"],
+        "gaps": ["확인된 정보 격차"],
+        "completeness": "현재까지의 분석 완성도 평가"
+    }},
+    "next_action": {{
+        "type": "continue | search | mindmap",
+        "query": "검색어 또는 질의 (action이 continue가 아닌 경우, 검색어는 400자 이내)",
+        "rationale": "이 행동을 선택한 이유 (남은 검색 횟수 고려)"
+    }}
+}}"""
+    )
 
     llm = ChatGoogleGenerativeAI(
         model="gemini-2.0-flash-exp",
-        temperature=0.3,  # 약간 높여서 더 통찰력 있는 분석 유도
+        temperature=0,
         convert_system_message_to_human=True
     )
     
     try:
         result = llm.invoke(
-            [SystemMessage(content=reasoner_instructions),
-             HumanMessage(content=human_message_content)]
+            [SystemMessage(content=reasoning_prompt.format(current_iteration=state.research_loop_count + 1)),
+             HumanMessage(content=human_message)]
+        )
+        
+        # LLM 응답 로깅 (JSON 파싱 전)
+        save_research_process(
+            state,
+            "Raw LLM Response",
+            f"System Prompt:\n{reasoning_prompt.format(current_iteration=state.research_loop_count + 1)}\n\n"
+            f"Human Message:\n{human_message}\n\n"
+            f"Raw Response:\n{result.content}"
         )
         
         try:
-            analysis = json.loads(result.content)
+            # 마크다운 코드 블록 제거
+            content = result.content
+            if "```json" in content:
+                content = content.split("```json")[1].split("```")[0].strip()
+            elif "```" in content:
+                content = content.split("```")[1].split("```")[0].strip()
+                
+            analysis = json.loads(content)
             
-            # 분석 결과를 통합적 보고서 형태로 구조화
-            integrated_analysis = f"""
-## 핵심 통찰
-{bullet_points(analysis['core_insights'])}
-
-## 상세 분석
-### 주요 발견사항
-{bullet_points(analysis['detailed_analysis']['key_findings'])}
-
-### 시사점 및 영향
-{bullet_points(analysis['detailed_analysis']['implications'])}
-
-### 도전과제 및 한계점
-{bullet_points(analysis['detailed_analysis']['challenges'])}
-
-## 종합적 결론
-{analysis['synthesis']}
-
-## 향후 방향성
-{bullet_points(analysis['future_directions'])}
-"""
-            
-            # 분석 과정 저장
+            # 파싱된 JSON 로깅 추가
             save_research_process(
                 state,
-                "Deep Analysis",
-                f"심층 분석 결과:\n{integrated_analysis}"
+                "Parsed JSON",
+                f"Cleaned content:\n{content}\n\n"
+                f"Parsed analysis:\n{json.dumps(analysis, indent=2, ensure_ascii=False)}"
             )
             
-            return {"running_summary": integrated_analysis}
+        except json.JSONDecodeError as e:
+            print(f"JSON 파싱 에러: {e}")
+            print(f"LLM 응답: {result.content}")
+            print(f"정제된 콘텐츠: {content}")
+            raise
+        
+        # 추론 과정 저장
+        save_research_process(
+            state,
+            "Reasoning Step",
+            f"Current Context:\n{current_context}\n\n"
+            f"Analysis:\n{json.dumps(analysis, indent=2, ensure_ascii=False)}"
+        )
+        
+        # 다음 액션에 따라 상태 업데이트
+        if analysis["next_action"]["type"] == "search":
+            return SummaryState(
+                research_topic=state.research_topic,
+                search_query=analysis["next_action"]["query"],
+                running_summary=analysis["current_analysis"].get("findings", []),
+                needs_external_info=True,
+                research_loop_count=(state.research_loop_count or 0) + 1,
+                web_research_results=state.web_research_results
+            )
+        elif analysis["next_action"]["type"] == "continue":
+            final_analysis = format_analysis(analysis)
             
-        except json.JSONDecodeError:
-            return {"running_summary": result.content}
+            # 최종 분석 저장
+            save_research_process(
+                state,
+                "Final Analysis",
+                f"Reasoning Complete\n\n{final_analysis}"
+            )
+            
+            return SummaryState(
+                research_topic=state.research_topic,
+                running_summary=final_analysis,
+                needs_external_info=False,
+                research_loop_count=(state.research_loop_count or 0) + 1,
+                web_research_results=state.web_research_results,
+                search_query=state.search_query
+            )
             
     except Exception as e:
-        print(f"Error in deep analysis: {e}")
-        return {"running_summary": state.running_summary}
+        print(f"Error in reasoning: {e}")
+        save_research_process(
+            state,
+            "Reasoning Error",
+            f"Error occurred: {str(e)}"
+        )
+        return SummaryState(
+            research_topic=state.research_topic,
+            running_summary=state.running_summary,
+            needs_external_info=False,
+            research_loop_count=(state.research_loop_count or 0) + 1,
+            web_research_results=state.web_research_results,
+            search_query=state.search_query
+        )
 
+def format_final_report(state: SummaryState) -> SummaryState:
+    """최종 연구 보고서 형식화"""
+    report = {
+        "research_topic": state.research_topic,
+        "iteration_count": state.research_loop_count,
+        "core_insights": [],
+        "detailed_analysis": {
+            "key_findings": [],
+            "implications": [],
+            "challenges": []
+        },
+        "synthesis": "",
+        "future_directions": [],
+        "methodology": {
+            "iterations": state.research_loop_count,
+            "data_sources": ["웹 검색", "학술 자료", "시장 보고서"],
+            "validation": "교차 검증 및 반복적 분석"
+        },
+        "references": []
+    }
     
-# Add nodes and edges 
-builder = StateGraph(SummaryState, input=SummaryStateInput, output=SummaryStateOutput, config_schema=Configuration)
+    final_report = json.dumps(report, indent=2, ensure_ascii=False)
+    
+    # SummaryState 객체 반환
+    return SummaryState(
+        research_topic=state.research_topic,
+        running_summary=final_report,
+        needs_external_info=False,
+        research_loop_count=state.research_loop_count,
+        web_research_results=state.web_research_results,
+        search_query=state.search_query
+    )
 
-# Add nodes
-builder.add_node("generate_query", generate_query)
+
+
+
+
+# Add nodes and edges 
+builder = StateGraph(SummaryState, input=SummaryStateInput, output=SummaryStateOutput)
+
+def initialize_research(state_input: SummaryStateInput) -> SummaryState:
+    """사용자 입력으로 초기 상태 생성"""
+    clear_session_files()
+
+    return SummaryState(
+        research_topic=state_input.research_topic,
+        web_research_results=[],
+        running_summary=None,
+        needs_external_info=True,  # 처음에는 항상 정보 수집이 필요
+        search_query=state_input.research_topic  # 초기 검색어는 연구 주제로 설정
+    )
+
+# 나머지 노드와 엣지 구성은 동일
+builder.add_node("initialize", initialize_research)
+builder.add_node("reason_from_sources", reason_from_sources)
 builder.add_node("web_research", web_research)
-builder.add_node("reason_from_sources", reason_from_sources)  # summarize_sources 대신 reason_from_sources 사용
-# builder.add_node("summarize_sources", summarize_sources)
-builder.add_node("reflect_on_summary", reflect_on_summary)
-# builder.add_node("review_summary", review_summary)
-builder.add_node("finalize_summary", finalize_summary)
+builder.add_node("generate_final_report", format_final_report)
 
 # Add edges
-builder.add_edge(START, "generate_query")
-builder.add_edge("generate_query", "web_research")
-# builder.add_edge("web_research", "summarize_sources")
-# builder.add_edge("summarize_sources", "reflect_on_summary")
+builder.add_edge(START, "initialize")
+builder.add_edge("initialize", "reason_from_sources")
 builder.add_edge("web_research", "reason_from_sources")
-builder.add_edge("reason_from_sources", "reflect_on_summary")
+
 builder.add_conditional_edges(
-    "reflect_on_summary",
-    route_research,
+    "reason_from_sources",
+    lambda x: "web_research" if x.needs_external_info else "generate_final_report",
     {
-        "web_research": "web_research",  # generate_query에서 web_research로 변경
-        # "review_summary": "review_summary",
-        "finalize_summary": "finalize_summary"
+        "web_research": "web_research",
+        "generate_final_report": "generate_final_report"
     }
 )
-# builder.add_conditional_edges(
-#     "review_summary",
-#     route_after_review,
-#     {
-#         "web_research": "web_research",  # generate_query에서 web_research로 변경
-#         "finalize_summary": "finalize_summary"
-#     }
-# )
-builder.add_edge("finalize_summary", END)
-# builder.add_edge(START, "generate_query")
-# builder.add_edge("generate_query", END)
 
+builder.add_edge("generate_final_report", END)
 
 graph = builder.compile()
+
+
