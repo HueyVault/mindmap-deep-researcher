@@ -1,0 +1,140 @@
+<?xml version='1.0' encoding='utf-8'?>
+<graphml xmlns="http://graphml.graphdrawing.org/xmlns" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://graphml.graphdrawing.org/xmlns http://graphml.graphdrawing.org/xmlns/1.0/graphml.xsd">
+  <key id="d2" for="edge" attr.name="type" attr.type="string" />
+  <key id="d1" for="node" attr.name="attributes" attr.type="string" />
+  <key id="d0" for="node" attr.name="type" attr.type="string" />
+  <graph edgedefault="directed">
+    <node id="고령화">
+      <data key="d0">사회 현상</data>
+      <data key="d1">{"영향": "가계 자산 보유 규모 및 구성에 영향", "고전적 이론": "위험 자산 시장 수요에 부정적 영향 가능"}</data>
+    </node>
+    <node id="가계">
+      <data key="d0">경제 주체</data>
+      <data key="d1">{"국가": "한국", "특징": "75세 이후 자산 소진 소극적, 부동산 보유 성향 강함", "자본시장 참여율": "30대 초반 정점 후 감소", "총자산": "미래 증가 예상", "자본시장자산 보유규모": "60세부터 빠르게 감소, 2034년 정점 후 감소 예상"}</data>
+    </node>
+    <node id="자산">
+      <data key="d0">경제적 가치</data>
+      <data key="d1">{"종류": "총자산, 자본시장자산, 위험자산, 부동산", "보유 규모": "고령화에 따라 변화", "소진": "한국 가계는 75세 이후 소극적"}</data>
+    </node>
+    <node id="위험 자산 시장">
+      <data key="d0">금융 시장</data>
+      <data key="d1">{"영향": "고령화에 부정적 영향 가능"}</data>
+    </node>
+    <node id="주식 시장">
+      <data key="d0">금융 시장</data>
+      <data key="d1">{"필요 조건": "위험 프리미엄 창출, 주주 중심 기업 문화 정착, 세제 혜택 계좌 확대"}</data>
+    </node>
+    <node id="주주 중심 기업 문화">
+      <data key="d0">기업 문화</data>
+      <data key="d1">{"필요성": "주식 시장 활성화"}</data>
+    </node>
+    <node id="세제 혜택 계좌">
+      <data key="d0">금융 상품</data>
+      <data key="d1">{"필요성": "주식 시장 활성화", "확대": "필요"}</data>
+    </node>
+    <node id="고령화 사회">
+      <data key="d0">사회 현상</data>
+      <data key="d1">{"영향": "자산관리 시장의 주요 동인"}</data>
+    </node>
+    <node id="자산관리 시장">
+      <data key="d0">시장</data>
+      <data key="d1">{"특징": "고령화 사회의 영향을 받음", "주요 고객": "고령층"}</data>
+    </node>
+    <node id="고령층">
+      <data key="d0">인구 집단</data>
+      <data key="d1">{"역할": "자산관리 시장의 큰 손", "영향": "자산 구성 및 투자 행동에 영향"}</data>
+    </node>
+    <node id="자산 구성">
+      <data key="d0">경제 개념</data>
+      <data key="d1">{"영향 요인": "고령화"}</data>
+    </node>
+    <node id="투자 행동">
+      <data key="d0">경제 활동</data>
+      <data key="d1">{"영향 요인": "고령화"}</data>
+    </node>
+    <node id="한국 고령 가계">
+      <data key="d0">가계</data>
+      <data key="d1">{"국적": "한국", "연령": "고령", "선호도": "부동산", "자산 소진": "소극적"}</data>
+    </node>
+    <node id="가계 총자산">
+      <data key="d0">경제 지표</data>
+      <data key="d1">{"미래 전망": "증가"}</data>
+    </node>
+    <node id="자본시장 자산">
+      <data key="d0">경제 지표</data>
+      <data key="d1">{"미래 전망": "감소"}</data>
+    </node>
+    <edge source="고령화" target="가계">
+      <data key="d2">영향</data>
+    </edge>
+    <edge source="고령화" target="자산">
+      <data key="d2">영향</data>
+    </edge>
+    <edge source="고령화" target="위험 자산 시장">
+      <data key="d2">영향</data>
+    </edge>
+    <edge source="고령화" target="세제 혜택 계좌">
+      <data key="d2">수요 증가</data>
+    </edge>
+    <edge source="가계" target="자산">
+      <data key="d2">소유</data>
+    </edge>
+    <edge source="가계" target="위험 자산 시장">
+      <data key="d2">투자</data>
+    </edge>
+    <edge source="가계" target="주식 시장">
+      <data key="d2">투자</data>
+    </edge>
+    <edge source="가계" target="세제 혜택 계좌">
+      <data key="d2">활용</data>
+    </edge>
+    <edge source="자산" target="위험 자산 시장">
+      <data key="d2">거래 대상</data>
+    </edge>
+    <edge source="자산" target="주식 시장">
+      <data key="d2">거래 대상</data>
+    </edge>
+    <edge source="위험 자산 시장" target="주식 시장">
+      <data key="d2">포함</data>
+    </edge>
+    <edge source="주식 시장" target="주주 중심 기업 문화">
+      <data key="d2">영향</data>
+    </edge>
+    <edge source="고령화 사회" target="고령층">
+      <data key="d2">구성</data>
+    </edge>
+    <edge source="고령화 사회" target="자산관리 시장">
+      <data key="d2">영향</data>
+    </edge>
+    <edge source="자산관리 시장" target="자산 구성">
+      <data key="d2">대상</data>
+    </edge>
+    <edge source="자산관리 시장" target="투자 행동">
+      <data key="d2">영향</data>
+    </edge>
+    <edge source="고령층" target="자산관리 시장">
+      <data key="d2">수요 주체</data>
+    </edge>
+    <edge source="고령층" target="한국 고령 가계">
+      <data key="d2">구성</data>
+    </edge>
+    <edge source="자산 구성" target="가계 총자산">
+      <data key="d2">구성 요소</data>
+    </edge>
+    <edge source="자산 구성" target="자본시장 자산">
+      <data key="d2">구성 요소</data>
+    </edge>
+    <edge source="투자 행동" target="자산 구성">
+      <data key="d2">결과</data>
+    </edge>
+    <edge source="한국 고령 가계" target="가계 총자산">
+      <data key="d2">보유</data>
+    </edge>
+    <edge source="한국 고령 가계" target="투자 행동">
+      <data key="d2">주체</data>
+    </edge>
+    <edge source="자본시장 자산" target="자산관리 시장">
+      <data key="d2">공급</data>
+    </edge>
+  </graph>
+</graphml>

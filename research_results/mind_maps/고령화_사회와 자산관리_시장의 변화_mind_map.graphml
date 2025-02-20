@@ -1,0 +1,80 @@
+<?xml version='1.0' encoding='utf-8'?>
+<graphml xmlns="http://graphml.graphdrawing.org/xmlns" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://graphml.graphdrawing.org/xmlns http://graphml.graphdrawing.org/xmlns/1.0/graphml.xsd">
+  <key id="d2" for="edge" attr.name="type" attr.type="string" />
+  <key id="d1" for="node" attr.name="attributes" attr.type="string" />
+  <key id="d0" for="node" attr.name="type" attr.type="string" />
+  <graph edgedefault="directed">
+    <node id="고령화 사회">
+      <data key="d0">사회 현상</data>
+      <data key="d1">{"특징": "인구 고령화", "영향": "자산관리 시장에서 시니어 계층 중요성 증가"}</data>
+    </node>
+    <node id="자산관리 시장">
+      <data key="d0">경제 시장</data>
+      <data key="d1">{"관련 계층": "시니어 계층", "영향 요인": "고령화 사회"}</data>
+    </node>
+    <node id="시니어 계층">
+      <data key="d0">인구 집단</data>
+      <data key="d1">{"특징": "고령 인구", "시장 영향력": "자산관리 시장에서 중요성 증가"}</data>
+    </node>
+    <node id="고령화">
+      <data key="d0">인구 변화</data>
+      <data key="d1">{"영향": "노동력 감소, 소비 패턴 변화, 사회복지 지출 증가, 경제 성장률 둔화, 산업 구조 변화"}</data>
+    </node>
+    <node id="노동력">
+      <data key="d0">경제 요소</data>
+      <data key="d1">{"영향": "고령화로 인한 감소"}</data>
+    </node>
+    <node id="소비 패턴">
+      <data key="d0">경제 활동</data>
+      <data key="d1">{"영향": "고령화로 인한 변화"}</data>
+    </node>
+    <node id="사회복지 지출">
+      <data key="d0">정부 지출</data>
+      <data key="d1">{"영향": "고령화로 인한 증가"}</data>
+    </node>
+    <node id="경제 성장률">
+      <data key="d0">경제 지표</data>
+      <data key="d1">{"영향": "고령화로 인한 둔화"}</data>
+    </node>
+    <node id="산업 구조">
+      <data key="d0">경제 구조</data>
+      <data key="d1">{"영향": "고령화로 인한 변화"}</data>
+    </node>
+    <edge source="고령화 사회" target="고령화">
+      <data key="d2">구성</data>
+    </edge>
+    <edge source="고령화 사회" target="시니어 계층">
+      <data key="d2">구성</data>
+    </edge>
+    <edge source="고령화 사회" target="경제 성장률">
+      <data key="d2">영향 (부정적일 수 있음)</data>
+    </edge>
+    <edge source="시니어 계층" target="자산관리 시장">
+      <data key="d2">수요</data>
+    </edge>
+    <edge source="시니어 계층" target="소비 패턴">
+      <data key="d2">영향</data>
+    </edge>
+    <edge source="고령화" target="시니어 계층">
+      <data key="d2">영향</data>
+    </edge>
+    <edge source="고령화" target="노동력">
+      <data key="d2">감소</data>
+    </edge>
+    <edge source="고령화" target="사회복지 지출">
+      <data key="d2">증가</data>
+    </edge>
+    <edge source="고령화" target="산업 구조">
+      <data key="d2">변화 유발</data>
+    </edge>
+    <edge source="노동력" target="경제 성장률">
+      <data key="d2">영향</data>
+    </edge>
+    <edge source="소비 패턴" target="산업 구조">
+      <data key="d2">영향</data>
+    </edge>
+    <edge source="사회복지 지출" target="경제 성장률">
+      <data key="d2">영향 (부정적일 수 있음)</data>
+    </edge>
+  </graph>
+</graphml>

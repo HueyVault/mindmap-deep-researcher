@@ -1,0 +1,63 @@
+<?xml version='1.0' encoding='utf-8'?>
+<graphml xmlns="http://graphml.graphdrawing.org/xmlns" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://graphml.graphdrawing.org/xmlns http://graphml.graphdrawing.org/xmlns/1.0/graphml.xsd">
+  <key id="d2" for="edge" attr.name="type" attr.type="string" />
+  <key id="d1" for="node" attr.name="attributes" attr.type="string" />
+  <key id="d0" for="node" attr.name="type" attr.type="string" />
+  <graph edgedefault="directed">
+    <node id="고령화">
+      <data key="d0">사회 현상</data>
+      <data key="d1">{"영향": "가계 자산 보유 규모 및 구성에 영향", "고전적 이론": "위험 자산 시장 수요에 부정적 영향 가능"}</data>
+    </node>
+    <node id="가계">
+      <data key="d0">경제 주체</data>
+      <data key="d1">{"국가": "한국", "특징": "75세 이후 자산 소진 소극적, 부동산 보유 성향 강함", "자본시장 참여율": "30대 초반 정점 후 감소", "총자산": "미래 증가 예상", "자본시장자산 보유규모": "60세부터 빠르게 감소, 2034년 정점 후 감소 예상"}</data>
+    </node>
+    <node id="자산">
+      <data key="d0">경제적 가치</data>
+      <data key="d1">{"종류": "총자산, 자본시장자산, 위험자산, 부동산", "보유 규모": "고령화에 따라 변화", "소진": "한국 가계는 75세 이후 소극적"}</data>
+    </node>
+    <node id="위험 자산 시장">
+      <data key="d0">금융 시장</data>
+      <data key="d1">{"영향": "고령화에 부정적 영향 가능"}</data>
+    </node>
+    <node id="주식 시장">
+      <data key="d0">금융 시장</data>
+      <data key="d1">{"필요 조건": "위험 프리미엄 창출, 주주 중심 기업 문화 정착, 세제 혜택 계좌 확대"}</data>
+    </node>
+    <node id="주주 중심 기업 문화">
+      <data key="d0">기업 문화</data>
+      <data key="d1">{"필요성": "주식 시장 활성화"}</data>
+    </node>
+    <node id="세제 혜택 계좌">
+      <data key="d0">금융 상품</data>
+      <data key="d1">{"필요성": "주식 시장 활성화", "확대": "필요"}</data>
+    </node>
+    <edge source="고령화" target="가계">
+      <data key="d2">영향</data>
+    </edge>
+    <edge source="고령화" target="자산">
+      <data key="d2">영향</data>
+    </edge>
+    <edge source="가계" target="자산">
+      <data key="d2">소유</data>
+    </edge>
+    <edge source="가계" target="세제 혜택 계좌">
+      <data key="d2">이용</data>
+    </edge>
+    <edge source="자산" target="위험 자산 시장">
+      <data key="d2">거래 대상</data>
+    </edge>
+    <edge source="자산" target="주식 시장">
+      <data key="d2">거래 대상</data>
+    </edge>
+    <edge source="자산" target="세제 혜택 계좌">
+      <data key="d2">보관</data>
+    </edge>
+    <edge source="위험 자산 시장" target="주식 시장">
+      <data key="d2">하위 집합</data>
+    </edge>
+    <edge source="주식 시장" target="주주 중심 기업 문화">
+      <data key="d2">영향</data>
+    </edge>
+  </graph>
+</graphml>

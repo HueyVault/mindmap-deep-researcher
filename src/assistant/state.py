@@ -1,6 +1,7 @@
 import operator
 from dataclasses import dataclass, field
-from typing_extensions import TypedDict, Annotated
+from typing_extensions import TypedDict, Annotated, Dict
+from assistant.mind_map import MindMapAgent
 
 @dataclass(kw_only=True)
 class SummaryState:
@@ -10,6 +11,7 @@ class SummaryState:
     needs_external_info: bool = field(default=False)
     search_query: str = field(default=None)
     research_loop_count: int = field(default=0)  # 추가
+    mind_map_data: Dict = field(default_factory=dict)  # MindMapAgent 대신 데이터만 저장
 
 @dataclass(kw_only=True)
 class SummaryStateInput:

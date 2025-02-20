@@ -1,0 +1,86 @@
+<?xml version='1.0' encoding='utf-8'?>
+<graphml xmlns="http://graphml.graphdrawing.org/xmlns" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://graphml.graphdrawing.org/xmlns http://graphml.graphdrawing.org/xmlns/1.0/graphml.xsd">
+  <key id="d2" for="edge" attr.name="type" attr.type="string" />
+  <key id="d1" for="node" attr.name="attributes" attr.type="string" />
+  <key id="d0" for="node" attr.name="type" attr.type="string" />
+  <graph edgedefault="directed">
+    <node id="고령화 사회">
+      <data key="d0">사회 현상</data>
+      <data key="d1">{"영향": "자산관리 시장의 주요 동인"}</data>
+    </node>
+    <node id="자산관리 시장">
+      <data key="d0">시장</data>
+      <data key="d1">{"동인": "고령화 사회", "주요 고객": "고령층"}</data>
+    </node>
+    <node id="고령층">
+      <data key="d0">인구 집단</data>
+      <data key="d1">{"역할": "자산관리 시장의 큰 손", "영향": "자산 구성 및 투자 행동"}</data>
+    </node>
+    <node id="자산 구성">
+      <data key="d0">경제 개념</data>
+      <data key="d1">{"영향 요인": "고령화"}</data>
+    </node>
+    <node id="투자 행동">
+      <data key="d0">경제 활동</data>
+      <data key="d1">{"영향 요인": "고령화"}</data>
+    </node>
+    <node id="한국 고령 가계">
+      <data key="d0">가계</data>
+      <data key="d1">{"특징": "부동산 선호도 높음, 자산 소진에 소극적"}</data>
+    </node>
+    <node id="가계 총자산">
+      <data key="d0">경제 지표</data>
+      <data key="d1">{"미래 전망": "증가"}</data>
+    </node>
+    <node id="자본시장 자산">
+      <data key="d0">자산</data>
+      <data key="d1">{"미래 전망": "감소"}</data>
+    </node>
+    <node id="부동산">
+      <data key="d0">자산</data>
+      <data key="d1">{"선호도": "한국 고령 가계에서 높음"}</data>
+    </node>
+    <edge source="고령화 사회" target="고령층">
+      <data key="d2">구성 요소</data>
+    </edge>
+    <edge source="고령화 사회" target="자산관리 시장">
+      <data key="d2">영향</data>
+    </edge>
+    <edge source="자산관리 시장" target="자산 구성">
+      <data key="d2">대상</data>
+    </edge>
+    <edge source="자산관리 시장" target="투자 행동">
+      <data key="d2">영향</data>
+    </edge>
+    <edge source="고령층" target="자산관리 시장">
+      <data key="d2">수요 주체</data>
+    </edge>
+    <edge source="고령층" target="한국 고령 가계">
+      <data key="d2">하위 집합</data>
+    </edge>
+    <edge source="자산 구성" target="가계 총자산">
+      <data key="d2">영향</data>
+    </edge>
+    <edge source="자산 구성" target="자본시장 자산">
+      <data key="d2">구성 요소</data>
+    </edge>
+    <edge source="자산 구성" target="부동산">
+      <data key="d2">구성 요소</data>
+    </edge>
+    <edge source="투자 행동" target="자산 구성">
+      <data key="d2">결과</data>
+    </edge>
+    <edge source="한국 고령 가계" target="가계 총자산">
+      <data key="d2">보유</data>
+    </edge>
+    <edge source="한국 고령 가계" target="투자 행동">
+      <data key="d2">주체</data>
+    </edge>
+    <edge source="가계 총자산" target="자산 구성">
+      <data key="d2">결정 요인</data>
+    </edge>
+    <edge source="자본시장 자산" target="자산관리 시장">
+      <data key="d2">공급</data>
+    </edge>
+  </graph>
+</graphml>

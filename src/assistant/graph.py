@@ -9,6 +9,11 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 from langgraph.graph import START, END, StateGraph
 
 from assistant.configuration import Configuration, SearchAPI
+from assistant.mind_map import MindMapAgent 
+
+import os
+from datetime import datetime
+
 
 # Core utilities
 from assistant.utils import (
@@ -147,7 +152,7 @@ def rate_limit(delay=1):
         return wrapper
     return decorator
 
-@rate_limit(delay=2)
+@rate_limit(delay=3)
 @retry(
     stop=stop_after_attempt(3),
     wait=wait_exponential(multiplier=1, min=4, max=10)
@@ -416,26 +421,82 @@ def reason_from_sources(state: SummaryState, config: RunnableConfig):
     print(f"Reasoning about topic: {state.research_topic}")
     print(f"Current state: {state}")
     
+    # Mind Map Agent 초기화
+    mind_map = MindMapAgent()
+
+    # 세션 타임스탬프 설정
+    if state.mind_map_data and "metadata" in state.mind_map_data:
+        mind_map.session_timestamp = state.mind_map_data["metadata"]["session_timestamp"]
+    else:
+        # 만약 metadata가 없다면 새로 생성
+        mind_map.session_timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        state.mind_map_data = {
+            "metadata": {
+                "session_timestamp": mind_map.session_timestamp,
+                "research_topic": state.research_topic,
+                "last_updated": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            },
+            "nodes": [],
+            "edges": []
+        }
+        
+    # 이전 상태의 마인드맵 데이터 복원
+    if state.mind_map_data.get("nodes"):
+        for node in state.mind_map_data["nodes"]:
+            mind_map.graph.add_node(
+                node["name"],
+                type=node["type"],
+                attributes=node["attributes"]
+            )
+    if state.mind_map_data.get("edges"):
+        for edge in state.mind_map_data["edges"]:
+            mind_map.graph.add_edge(
+                edge["source"],
+                edge["target"],
+                type=edge["type"]
+            )
+
     existing_analysis = state.running_summary
     current_context = state.web_research_results[-1] if state.web_research_results else ""
+
+    # 기존 분석이 있다면 Mind Map에 추가
+    if existing_analysis:
+        mind_map.update_graph(existing_analysis)
 
     # 추론 지시사항 수정
     reasoning_prompt = """당신은 주어진 주제에 대해 심층적인 분석과 추론을 수행하는 전문 연구원입니다.
 
 현재 진행 상황: {current_iteration}/5회차
-※ 웹 검색은 최대 5회만 가능하므로, 효율적인 정보 수집이 매우 중요합니다.
+
+[중요 제한사항]
+- 웹 검색은 전체 연구 과정에서 최대 5회만 허용됩니다
+- 각 검색은 신중하게 선택되어야 하며, 연구의 핵심 질문을 해결하는데 집중해야 합니다
+- 불필요한 검색은 제한된 기회를 낭비하게 됩니다
+- 마지막 회차에서는 반드시 결론을 도출해야 합니다
 
 추론 시 다음을 고려해주세요:
 1. 현재까지 수집된 정보의 충분성
-2. 남은 웹 검색 기회 내에서 필요한 추가 정보의 우선순위
+2. 남은 검색 기회를 고려한 정보 수집 우선순위
 3. 정보가 충분하다면 최종 결론 도출
 
-추론 중 추가 정보가 필요하다면 다음 특수 토큰을 사용하여 요청할 수 있습니다:
-- <SEARCH>검색어</SEARCH> : 웹 검색 요청 (최대 400자)
-- <MINDMAP>질의</MINDMAP> : 마인드맵 조회 요청
+정보 수집을 위한 두 가지 방법:
+1. <SEARCH>검색어</SEARCH> : 웹 검색 요청 (최대 400자)
+   - 남은 검색 횟수를 고려하여 신중하게 사용
+   - 새로운 정보가 반드시 필요한 경우에만 사용
 
-※ 제한된 검색 횟수를 고려하여 검색어를 신중하게 선택해주세요.
-※ 마지막 회차에서는 반드시 최종 결론을 도출해야 합니다.
+2. <MINDMAP>질의</MINDMAP> : 마인드맵 조회 요청
+   - 이전 분석 내용을 참조할 때 사용
+   - 검색 횟수를 소비하지 않음
+   - 예시 질의:
+     * "개념 X와 Y의 관계는?"
+     * "지금까지 발견된 주요 과제들은?"
+     * "이전 분석에서 언급된 기술적 세부사항은?"
+
+※ 효율적인 연구 전략:
+1. 첫 1-2회 검색으로 핵심 정보 수집
+2. 중간 단계에서는 마인드맵 활용하여 기존 정보 분석
+3. 마지막 검색들은 핵심 격차를 메우는데 사용
+4. 5회차에서는 반드시 최종 결론 도출
 
 중요: 반드시 아래 JSON 형식으로만 응답해주세요. 다른 텍스트나 설명을 추가하지 마세요."""
 
@@ -472,7 +533,7 @@ def reason_from_sources(state: SummaryState, config: RunnableConfig):
              HumanMessage(content=human_message)]
         )
         
-        # LLM 응답 로깅 (JSON 파싱 전)
+        # LLM 응답 로깅
         save_research_process(
             state,
             "Raw LLM Response",
@@ -488,6 +549,22 @@ def reason_from_sources(state: SummaryState, config: RunnableConfig):
                 content = content.split("```json")[1].split("```")[0].strip()
             elif "```" in content:
                 content = content.split("```")[1].split("```")[0].strip()
+            
+            # <MINDMAP> 토큰 처리
+            while "<MINDMAP>" in content and "</MINDMAP>" in content:
+                start = content.find("<MINDMAP>") + len("<MINDMAP>")
+                end = content.find("</MINDMAP>")
+                query = content[start:end].strip()
+                
+                # Mind Map에 질의
+                mind_map_response = mind_map.query_mind_map(query)
+                
+                # 응답을 추론 체인에 통합
+                content = (
+                    content[:start-len("<MINDMAP>")] +
+                    f"[Mind Map 응답: {mind_map_response}]" +
+                    content[end+len("</MINDMAP>"):]
+                )
                 
             analysis = json.loads(content)
             
@@ -499,6 +576,43 @@ def reason_from_sources(state: SummaryState, config: RunnableConfig):
                 f"Parsed analysis:\n{json.dumps(analysis, indent=2, ensure_ascii=False)}"
             )
             
+            # Mind Map 업데이트 및 저장
+            if analysis["current_analysis"]["findings"]:
+                mind_map.update_graph(str(analysis["current_analysis"]["findings"]))
+                
+                # 그래프 저장
+                graphml_path, json_path = mind_map.save_graph(state.research_topic)
+                
+                # 상태에 마인드맵 데이터 저장
+                state.mind_map_data = {
+                    "session_timestamp": state.mind_map_data["session_timestamp"],
+                    "nodes": [
+                        {
+                            "name": node,
+                            "type": mind_map.graph.nodes[node].get("type", ""),
+                            "attributes": mind_map.graph.nodes[node].get("attributes", {})
+                        }
+                        for node in mind_map.graph.nodes
+                    ],
+                    "edges": [
+                        {
+                            "source": u,
+                            "target": v,
+                            "type": mind_map.graph.edges[u, v].get("type", "")
+                        }
+                        for u, v in mind_map.graph.edges
+                    ]
+                }
+                
+                # 마인드맵 저장 결과 기록
+                save_research_process(
+                    state,
+                    "Mind Map Update",
+                    f"Mind map updated and saved to:\n"
+                    f"- GraphML: {os.path.basename(graphml_path)}\n"
+                    f"- JSON: {os.path.basename(json_path)}"
+                )
+
         except json.JSONDecodeError as e:
             print(f"JSON 파싱 에러: {e}")
             print(f"LLM 응답: {result.content}")
@@ -521,7 +635,20 @@ def reason_from_sources(state: SummaryState, config: RunnableConfig):
                 running_summary=analysis["current_analysis"].get("findings", []),
                 needs_external_info=True,
                 research_loop_count=(state.research_loop_count or 0) + 1,
-                web_research_results=state.web_research_results
+                web_research_results=state.web_research_results,
+                mind_map_data=state.mind_map_data  # 누락된 부분 추가
+            )
+        elif analysis["next_action"]["type"] == "mindmap":
+            # Mind Map 질의 처리
+            mind_map_response = mind_map.query_mind_map(analysis["next_action"]["query"])
+            return SummaryState(
+                research_topic=state.research_topic,
+                running_summary=mind_map_response,
+                needs_external_info=False,  # Mind Map 응답 후 다시 추론
+                research_loop_count=state.research_loop_count,
+                web_research_results=state.web_research_results,
+                search_query=state.search_query,
+                mind_map_data=state.mind_map_data  # 누락된 부분 추가
             )
         elif analysis["next_action"]["type"] == "continue":
             final_analysis = format_analysis(analysis)
@@ -539,7 +666,8 @@ def reason_from_sources(state: SummaryState, config: RunnableConfig):
                 needs_external_info=False,
                 research_loop_count=(state.research_loop_count or 0) + 1,
                 web_research_results=state.web_research_results,
-                search_query=state.search_query
+                search_query=state.search_query,
+                mind_map_data=state.mind_map_data  # 누락된 부분 추가
             )
             
     except Exception as e:
@@ -555,7 +683,8 @@ def reason_from_sources(state: SummaryState, config: RunnableConfig):
             needs_external_info=False,
             research_loop_count=(state.research_loop_count or 0) + 1,
             web_research_results=state.web_research_results,
-            search_query=state.search_query
+            search_query=state.search_query,
+            mind_map_data=state.mind_map_data  # 누락된 부분 추가
         )
 
 def format_final_report(state: SummaryState) -> SummaryState:
@@ -588,10 +717,9 @@ def format_final_report(state: SummaryState) -> SummaryState:
         needs_external_info=False,
         research_loop_count=state.research_loop_count,
         web_research_results=state.web_research_results,
-        search_query=state.search_query
+        search_query=state.search_query,
+        mind_map_data=state.mind_map_data  # 누락된 부분 추가
     )
-
-
 
 
 
@@ -601,13 +729,28 @@ builder = StateGraph(SummaryState, input=SummaryStateInput, output=SummaryStateO
 def initialize_research(state_input: SummaryStateInput) -> SummaryState:
     """사용자 입력으로 초기 상태 생성"""
     clear_session_files()
-
+    
+    # 세션 시작 시간 생성
+    session_timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    
+    # mind_map_data 초기화 구조 수정
+    mind_map_data = {
+        "metadata": {
+            "session_timestamp": session_timestamp,
+            "research_topic": state_input.research_topic,
+            "last_updated": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        },
+        "nodes": [],
+        "edges": []
+    }
+    
     return SummaryState(
         research_topic=state_input.research_topic,
         web_research_results=[],
         running_summary=None,
-        needs_external_info=True,  # 처음에는 항상 정보 수집이 필요
-        search_query=state_input.research_topic  # 초기 검색어는 연구 주제로 설정
+        needs_external_info=True,
+        search_query=state_input.research_topic,
+        mind_map_data=mind_map_data
     )
 
 # 나머지 노드와 엣지 구성은 동일
