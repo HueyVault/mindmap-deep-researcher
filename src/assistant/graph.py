@@ -32,7 +32,8 @@ from assistant.prompts import (
     query_writer_instructions,
     summarizer_instructions,
     reflection_instructions,
-    review_instructions
+    review_instructions,
+    reasoner_instructions
 )
 
 def generate_query(state: SummaryState, config: RunnableConfig):
@@ -250,22 +251,36 @@ def reflect_on_summary(state: SummaryState, config: RunnableConfig):
         return {"search_query": f"Tell me more about {state.research_topic}"}
 
 def finalize_summary(state: SummaryState):
-    """ Finalize the summary """
+    """최종 연구 보고서 생성"""
     
-    # Format all accumulated sources into a single bulleted list
-    all_sources = "\n".join(source for source in state.sources_gathered)
-    final_summary = f"## Summary\n\n{state.running_summary}\n\n### Sources:\n{all_sources}"
+    # sources_gathered는 이미 형식화된 문자열 리스트이므로 join으로 합치기
+    sources_text = "\n".join(state.sources_gathered) if state.sources_gathered else "참고 문헌 없음"
     
-    # 최종 결과 저장
+    # 모든 분석 결과를 통합하여 최종 보고서 작성
+    final_report = f"""# {state.research_topic} - 심층 연구 보고서
+
+{state.running_summary}
+
+## 연구 방법론
+- 다양한 출처의 자료 수집 및 분석
+- 총 {state.research_loop_count}회의 반복적 심층 분석 수행
+- 교차 검증을 통한 신뢰성 확보
+
+## 참고 문헌
+{sources_text}
+"""
+    
+    # 최종 보고서 저장
     save_research_process(
         state,
-        "Final Research Results",
-        f"Research Topic: {state.research_topic}\n\n"
-        f"Total Research Loops: {state.research_loop_count}\n\n"
-        f"Final Summary:\n{final_summary}"
+        "Final Research Report",
+        f"연구 주제: {state.research_topic}\n\n"
+        f"분석 반복 횟수: {state.research_loop_count}\n\n"
+        f"최종 보고서:\n{final_report}"
     )
     
-    return {"running_summary": final_summary}
+    return {"running_summary": final_report}
+
 
 def review_summary(state: SummaryState, config: RunnableConfig):
     """Review and refine the current summary for relevance and coherence"""
@@ -321,6 +336,29 @@ def review_summary(state: SummaryState, config: RunnableConfig):
         print(f"Error in review_summary: {e}")
         return {"running_summary": state.running_summary}
 
+def format_reasoning_chain(research_results):
+    """추론 체인을 문서화된 형태로 변환"""
+    formatted_chain = []
+    
+    for i, result in enumerate(research_results, 1):
+        try:
+            # JSON 형태로 저장된 추론 결과 파싱 시도
+            if isinstance(result, str):
+                # 추론 결과가 문자열 형태로 저장된 경우
+                formatted_chain.append(f"### 분석 {i}\n{result}\n")
+            else:
+                # 이미 파싱된 결과나 다른 형태의 데이터인 경우
+                formatted_chain.append(f"### 분석 {i}\n{result}\n")
+        except Exception as e:
+            # 파싱 실패 시 원본 텍스트 사용
+            formatted_chain.append(f"### 분석 {i}\n{str(result)}\n")
+    
+    return "\n".join(formatted_chain)
+
+
+def bullet_points(items):
+    """리스트 항목을 글머리 기호 형식으로 변환"""
+    return "\n".join(f"- {item}" for item in items)
     
 def route_research(state: SummaryState) -> Literal["web_research", "review_summary", "finalize_summary"]:
     """웹 검색 진행 중 다음 단계를 결정
@@ -333,8 +371,8 @@ def route_research(state: SummaryState) -> Literal["web_research", "review_summa
     """
     if state.research_loop_count >= 6:  # 6회 이상이면 종료
         return "finalize_summary"
-    elif state.research_loop_count == 3:  # 3회차에 리뷰
-        return "review_summary"
+    # elif state.research_loop_count == 3:  # 3회차에 리뷰
+    #     return "review_summary"
     return "web_research"
 
 def route_after_review(state: SummaryState) -> Literal["web_research", "finalize_summary"]:
@@ -348,39 +386,117 @@ def route_after_review(state: SummaryState) -> Literal["web_research", "finalize
         return "finalize_summary"
     return "web_research"  # 그 외에는 다시 검색
     
+def reason_from_sources(state: SummaryState, config: RunnableConfig):
+    """주제에 대한 심층 분석 및 추론 수행"""
+    
+    # 모든 검색 결과를 통합하여 분석
+    all_research = "\n\n".join(state.web_research_results)
+    existing_analysis = state.running_summary
+
+    if existing_analysis:
+        human_message_content = (
+            f"<연구 주제>\n{state.research_topic}\n</연구 주제>\n\n"
+            f"<기존 분석>\n{existing_analysis}\n</기존 분석>\n\n"
+            f"<추가 자료>\n{state.web_research_results[-1]}\n</추가 자료>\n\n"
+            "기존 분석을 발전시켜 더 깊이 있는 통찰을 제공해주세요."
+        )
+    else:
+        human_message_content = (
+            f"<연구 주제>\n{state.research_topic}\n</연구 주제>\n\n"
+            f"<수집된 자료>\n{all_research}\n</수집된 자료>\n\n"
+            "주제에 대한 심층적인 분석을 제공해주세요."
+        )
+
+    llm = ChatGoogleGenerativeAI(
+        model="gemini-2.0-flash-exp",
+        temperature=0.3,  # 약간 높여서 더 통찰력 있는 분석 유도
+        convert_system_message_to_human=True
+    )
+    
+    try:
+        result = llm.invoke(
+            [SystemMessage(content=reasoner_instructions),
+             HumanMessage(content=human_message_content)]
+        )
+        
+        try:
+            analysis = json.loads(result.content)
+            
+            # 분석 결과를 통합적 보고서 형태로 구조화
+            integrated_analysis = f"""
+## 핵심 통찰
+{bullet_points(analysis['core_insights'])}
+
+## 상세 분석
+### 주요 발견사항
+{bullet_points(analysis['detailed_analysis']['key_findings'])}
+
+### 시사점 및 영향
+{bullet_points(analysis['detailed_analysis']['implications'])}
+
+### 도전과제 및 한계점
+{bullet_points(analysis['detailed_analysis']['challenges'])}
+
+## 종합적 결론
+{analysis['synthesis']}
+
+## 향후 방향성
+{bullet_points(analysis['future_directions'])}
+"""
+            
+            # 분석 과정 저장
+            save_research_process(
+                state,
+                "Deep Analysis",
+                f"심층 분석 결과:\n{integrated_analysis}"
+            )
+            
+            return {"running_summary": integrated_analysis}
+            
+        except json.JSONDecodeError:
+            return {"running_summary": result.content}
+            
+    except Exception as e:
+        print(f"Error in deep analysis: {e}")
+        return {"running_summary": state.running_summary}
+
+    
 # Add nodes and edges 
 builder = StateGraph(SummaryState, input=SummaryStateInput, output=SummaryStateOutput, config_schema=Configuration)
 
 # Add nodes
 builder.add_node("generate_query", generate_query)
 builder.add_node("web_research", web_research)
-builder.add_node("summarize_sources", summarize_sources)
+builder.add_node("reason_from_sources", reason_from_sources)  # summarize_sources 대신 reason_from_sources 사용
+# builder.add_node("summarize_sources", summarize_sources)
 builder.add_node("reflect_on_summary", reflect_on_summary)
-builder.add_node("review_summary", review_summary)
+# builder.add_node("review_summary", review_summary)
 builder.add_node("finalize_summary", finalize_summary)
 
 # Add edges
 builder.add_edge(START, "generate_query")
 builder.add_edge("generate_query", "web_research")
-builder.add_edge("web_research", "summarize_sources")
-builder.add_edge("summarize_sources", "reflect_on_summary")
+# builder.add_edge("web_research", "summarize_sources")
+# builder.add_edge("summarize_sources", "reflect_on_summary")
+builder.add_edge("web_research", "reason_from_sources")
+builder.add_edge("reason_from_sources", "reflect_on_summary")
 builder.add_conditional_edges(
     "reflect_on_summary",
     route_research,
     {
         "web_research": "web_research",  # generate_query에서 web_research로 변경
-        "review_summary": "review_summary",
+        # "review_summary": "review_summary",
         "finalize_summary": "finalize_summary"
     }
 )
-builder.add_conditional_edges(
-    "review_summary",
-    route_after_review,
-    {
-        "web_research": "web_research",  # generate_query에서 web_research로 변경
-        "finalize_summary": "finalize_summary"
-    }
-)
+# builder.add_conditional_edges(
+#     "review_summary",
+#     route_after_review,
+#     {
+#         "web_research": "web_research",  # generate_query에서 web_research로 변경
+#         "finalize_summary": "finalize_summary"
+#     }
+# )
 builder.add_edge("finalize_summary", END)
 # builder.add_edge(START, "generate_query")
 # builder.add_edge("generate_query", END)
