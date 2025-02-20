@@ -1,5 +1,6 @@
 
 .venv
+/venv
 .env
 ollama.log
 # Python
