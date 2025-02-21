@@ -63,15 +63,35 @@ def format_sources(search_results):
     """Format search results into a bullet-point list of sources.
     
     Args:
-        search_results (dict): Tavily search response containing results
+        search_results: List of search results or dict with 'results' key
         
     Returns:
         str: Formatted string with sources and their URLs
     """
-    return '\n'.join(
-        f"* {source['title']} : {source['url']}"
-        for source in search_results['results']
-    )
+    if not search_results:
+        return "참고 문헌 없음"
+        
+    # 리스트인 경우 직접 처리
+    if isinstance(search_results, list):
+        formatted_sources = []
+        for result in search_results:
+            if isinstance(result, dict) and 'results' in result:
+                # 딕셔너리 안의 results 리스트 처리
+                for source in result['results']:
+                    formatted_sources.append(f"* {source['title']} : {source['url']}")
+            elif isinstance(result, str):
+                # 문자열인 경우 그대로 추가
+                formatted_sources.append(result)
+        return '\n'.join(formatted_sources)
+    
+    # 딕셔너리인 경우 results 키로 접근
+    elif isinstance(search_results, dict) and 'results' in search_results:
+        return '\n'.join(
+            f"* {source['title']} : {source['url']}"
+            for source in search_results['results']
+        )
+    
+    return "참고 문헌 형식 오류"
 
 @traceable
 def tavily_search(query, include_raw_content=True, max_results=3):

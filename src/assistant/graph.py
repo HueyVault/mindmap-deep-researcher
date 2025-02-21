@@ -97,10 +97,8 @@ def web_research(state: SummaryState, config: RunnableConfig):
 
     if search_api == "tavily":
         search_results = tavily_search(search_query, include_raw_content=True, max_results=1)
-        search_str = deduplicate_and_format_sources(search_results, max_tokens_per_source=1000, include_raw_content=True)
     elif search_api == "perplexity":
         search_results = perplexity_search(search_query, state.research_loop_count)
-        search_str = deduplicate_and_format_sources(search_results, max_tokens_per_source=1000, include_raw_content=False)
     else:
         raise ValueError(f"Unsupported search API: {configurable.search_api}")
     
@@ -108,14 +106,25 @@ def web_research(state: SummaryState, config: RunnableConfig):
     save_research_process(
         state,
         "Search Results",
-        f"Raw Results:\n{search_str}\n\n"
+        f"Raw Results:\n{search_results}\n\n"
         f"Formatted Sources:\n{format_sources(search_results)}"
     )
     
-    # SummaryState 객체 반환으로 수정
+    # 기존 결과에 새로운 결과 추가 (중복 제거)
+    current_results = state.web_research_results.copy()
+    if isinstance(search_results, dict) and 'results' in search_results:
+        # URL 기반 중복 제거
+        seen_urls = {result['url'] for result in [item for sublist in current_results for item in sublist.get('results', [])] if isinstance(result, dict)}
+        new_results = [
+            result for result in search_results['results']
+            if result['url'] not in seen_urls
+        ]
+        if new_results:
+            current_results.append({'results': new_results})
+    
     return SummaryState(
         research_topic=state.research_topic,
-        web_research_results=state.web_research_results + [search_str],  # 검색 결과 누적
+        web_research_results=current_results,  # 중복이 제거된 결과 사용
         running_summary=state.running_summary,
         needs_external_info=True,
         research_loop_count=state.research_loop_count,
@@ -569,28 +578,54 @@ def reason_from_sources(state: SummaryState, config: RunnableConfig):
 
 def format_final_report(state: SummaryState) -> SummaryState:
     """최종 연구 보고서 형식화"""
-    report = {
-        "research_topic": state.research_topic,
-        "iteration_count": state.research_loop_count,
-        "core_insights": [],
-        "detailed_analysis": {
-            "key_findings": [],
-            "implications": [],
-            "challenges": []
-        },
-        "synthesis": "",
-        "future_directions": [],
-        "methodology": {
-            "iterations": state.research_loop_count,
-            "data_sources": ["웹 검색", "학술 자료", "시장 보고서"],
-            "validation": "교차 검증 및 반복적 분석"
-        },
-        "references": []
-    }
     
-    final_report = json.dumps(report, indent=2, ensure_ascii=False)
+    # running_summary 타입 체크 및 변환
+    current_summary = state.running_summary
+    if isinstance(current_summary, list):
+        current_summary = "\n".join(f"- {item}" for item in current_summary)
+    elif current_summary is None:
+        current_summary = "분석 결과 없음"
     
-    # SummaryState 객체 반환
+    # LLM 설정
+    llm = ChatGoogleGenerativeAI(
+        model="gemini-2.0-flash-exp",
+        temperature=0,
+        convert_system_message_to_human=True
+    )
+    
+    # 기존 분석 결과를 LLM에게 전달
+    final_analysis = llm.invoke([
+        SystemMessage(content="""주어진 연구 결과를 바탕으로 학술적인 최종 보고서를 작성해주세요.
+다음 구조를 반드시 포함해야 합니다:
+1. 연구 개요
+2. 연구 방법
+3. 주요 발견사항
+4. 상세 분석
+5. 결론 및 시사점"""),
+        HumanMessage(content=f"""
+연구 주제: {state.research_topic}
+분석 결과: {current_summary}
+분석 횟수: {state.research_loop_count}회
+""")
+    ])
+
+   
+    # 최종 보고서 구성
+    final_report = f"""# {state.research_topic} - 최종 연구 보고서
+
+{final_analysis.content}
+
+## 참고 문헌
+{format_sources(state.web_research_results)}
+"""
+    
+    # 최종 보고서 저장
+    save_research_process(
+        state,
+        "Final Research Report",
+        final_report
+    )
+    
     return SummaryState(
         research_topic=state.research_topic,
         running_summary=final_report,
@@ -599,7 +634,6 @@ def format_final_report(state: SummaryState) -> SummaryState:
         web_research_results=state.web_research_results,
         search_query=state.search_query
     )
-
 
 
 
