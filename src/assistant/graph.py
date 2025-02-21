@@ -9,6 +9,7 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 from langgraph.graph import START, END, StateGraph
 
 from assistant.configuration import Configuration, SearchAPI
+from assistant.mind_map import MindMapAgent, MindMapToken, MindMapTokenType
 
 # Core utilities
 from assistant.utils import (
@@ -419,6 +420,80 @@ def format_analysis(analysis):
 {analysis.get('reasoning_step', '추론 단계 정보 없음')}
 """
 
+def update_mind_map(state: SummaryState, config: RunnableConfig) -> SummaryState:
+    """Mind Map 업데이트 및 쿼리 처리"""
+    try:
+        # Mind Map 에이전트 초기화
+        mind_map = MindMapAgent(
+            url=os.getenv("NEO4J_URL"),
+            username=os.getenv("NEO4J_USERNAME"),
+            password=os.getenv("NEO4J_PASSWORD")
+        )
+        
+        current_summary = state.running_summary
+        if isinstance(current_summary, list):
+            current_summary = "\n".join(f"- {item}" for item in current_summary)
+        elif current_summary is None:
+            current_summary = ""
+        
+        # 토큰 처리
+        if isinstance(current_summary, str) and "[MIND_MAP_QUERY]" in current_summary:
+            # 쿼리 토큰 발견 시
+            query_parts = current_summary.split("[MIND_MAP_QUERY]")
+            if len(query_parts) > 1:
+                query_content = query_parts[1].split("[/MIND_MAP_QUERY]")[0]
+                token = MindMapToken(
+                    type=MindMapTokenType.QUERY,
+                    query=query_content.strip(),
+                    context=current_summary
+                )
+        else:
+            # 일반 업데이트
+            token = MindMapToken(
+                type=MindMapTokenType.UPDATE,
+                query="",
+                context=str(current_summary)
+            )
+        
+        result = mind_map.process_token(token)
+        
+        # 결과 저장
+        operation_result = {
+            "operation_type": token.type.value,
+            "result": result
+        }
+        
+        save_research_process(
+            state,
+            "Mind Map Operation",
+            json.dumps(operation_result, indent=2, ensure_ascii=False)
+        )
+        
+        # Mind Map 쿼리 결과를 running_summary에 통합
+        if token.type == MindMapTokenType.QUERY:
+            updated_summary = f"{current_summary}\n\nMind Map Query Result:\n{result}"
+        else:
+            updated_summary = current_summary
+        
+        return SummaryState(
+            research_topic=state.research_topic,
+            running_summary=updated_summary,
+            needs_external_info=True,  # Mind Map 업데이트 후 항상 추론으로 돌아감
+            research_loop_count=state.research_loop_count,
+            web_research_results=state.web_research_results,
+            search_query=state.search_query
+        )
+        
+    except Exception as e:
+        print(f"Mind Map 처리 중 오류 발생: {e}")
+        save_research_process(
+            state,
+            "Mind Map Error",
+            f"Error occurred: {str(e)}"
+        )
+        return state  # 오류 발생 시 원래 상태 반환
+
+
 def reason_from_sources(state: SummaryState, config: RunnableConfig):
     """주제에 대한 심층 분석 및 추론 수행"""
     # 상태 확인을 위한 로깅 추가
@@ -448,6 +523,15 @@ def reason_from_sources(state: SummaryState, config: RunnableConfig):
 1. <SEARCH>검색어</SEARCH> : 웹 검색 요청 (최대 400자)
    - 남은 검색 횟수를 고려하여 신중하게 사용
    - 새로운 정보가 반드시 필요한 경우에만 사용
+
+추론에 대한 방향을 다시 설정하거나 정보 수집을 위한 방법:
+1. <MINDMAP>질의</MINDMAP> : 마인드맵 조회 요청
+   - 이전 분석 내용을 참조할 때 사용
+   - 검색 횟수를 소비하지 않음
+   - 예시 질의:
+     * "개념 X와 Y의 관계는?"
+     * "지금까지 발견된 주요 과제들은?"
+     * "이전 분석에서 언급된 기술적 세부사항은?"
 
 ※ 효율적인 연구 전략:
 1. 첫 1-2회 검색으로 핵심 정보 수집
@@ -530,6 +614,17 @@ def reason_from_sources(state: SummaryState, config: RunnableConfig):
             f"Current Context:\n{current_context}\n\n"
             f"Analysis:\n{json.dumps(analysis, indent=2, ensure_ascii=False)}"
         )
+
+        # Mind Map 업데이트를 위한 토큰 확인
+        if "[MIND_MAP_QUERY]" in result.content:
+            return SummaryState(
+                research_topic=state.research_topic,
+                search_query=state.search_query,
+                running_summary=result.content,  # 토큰을 포함한 전체 응답 전달
+                needs_external_info=True,
+                research_loop_count=state.research_loop_count,
+                web_research_results=state.web_research_results
+            )
         
         # 다음 액션에 따라 상태 업데이트
         if analysis["next_action"]["type"] == "search":
@@ -658,11 +753,13 @@ builder.add_node("initialize", initialize_research)
 builder.add_node("reason_from_sources", reason_from_sources)
 builder.add_node("web_research", web_research)
 builder.add_node("generate_final_report", format_final_report)
+builder.add_node("update_mind_map", update_mind_map)
 
 # Add edges
 builder.add_edge(START, "initialize")
 builder.add_edge("initialize", "reason_from_sources")
 builder.add_edge("web_research", "reason_from_sources")
+builder.add_edge("update_mind_map", "reason_from_sources")
 
 builder.add_conditional_edges(
     "reason_from_sources",
