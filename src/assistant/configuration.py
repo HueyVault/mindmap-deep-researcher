@@ -15,8 +15,13 @@ class SearchAPI(Enum):
 class Configuration:
     """The configurable fields for the research assistant."""
     max_web_research_loops: int = 8
-    local_llm: str = "gemini-2.0-flash-exp" # "deepseek-r1:8b"
-    search_api: SearchAPI = SearchAPI.TAVILY  # Default to TAVILY
+    local_llm: str = "gemini-2.0-flash-exp"
+    search_api: SearchAPI = SearchAPI.TAVILY
+    
+    # Neo4j 설정 추가 (기본값 없이)
+    neo4j_url: str
+    neo4j_username: str
+    neo4j_password: str
 
     @classmethod
     def from_runnable_config(

@@ -12,6 +12,8 @@ from langgraph.graph import START, END, StateGraph
 from assistant.configuration import Configuration, SearchAPI
 from assistant.mind_map import MindMapAgent, MindMapToken, MindMapTokenType
 
+import os
+
 # Core utilities
 from assistant.utils import (
     deduplicate_and_format_sources,
@@ -425,11 +427,14 @@ def update_mind_map(state: SummaryState, config: RunnableConfig) -> SummaryState
     """Mind Map 업데이트 및 쿼리 처리"""
 
     try:
+        # Configuration에서 Neo4j 설정 가져오기
+        configurable = Configuration.from_runnable_config(config)
+        
         # Mind Map 에이전트 초기화
         mind_map = MindMapAgent(
-            url=os.getenv("NEO4J_URL"),
-            username=os.getenv("NEO4J_USERNAME"),
-            password=os.getenv("NEO4J_PASSWORD")
+            url=configurable.neo4j_url,
+            username=configurable.neo4j_username,
+            password=configurable.neo4j_password
         )
         # running_summary 가공.
         current_summary = state.running_summary
@@ -484,11 +489,16 @@ def reason_from_sources(state: SummaryState, config: RunnableConfig):
 
     # Mind Map Agent 초기화 (에러 방지)
     try:
+        # Configuration에서 Neo4j 설정 가져오기
+        configurable = Configuration.from_runnable_config(config)
+        
+        # Mind Map 에이전트 초기화
         mind_map = MindMapAgent(
-            url=os.getenv("NEO4J_URL"),
-            username=os.getenv("NEO4J_USERNAME"),
-            password=os.getenv("NEO4J_PASSWORD")
+            url=configurable.neo4j_url,
+            username=configurable.neo4j_username,
+            password=configurable.neo4j_password
         )
+        
     except Exception as e:
         print("NEO4J 연결 정보가 없거나, 잘못되었습니다.")
         return
@@ -715,7 +725,7 @@ builder.add_node("initialize", initialize_research)
 builder.add_node("reason_from_sources", reason_from_sources)
 builder.add_node("web_research", web_research)
 builder.add_node("generate_final_report", format_final_report)
-builder.add_node("update_mind_map", update_mind_map) # 이 노드는 이제 사용하지 않음
+# builder.add_node("update_mind_map", update_mind_map) # 이 노드는 이제 사용하지 않음
 
 # Add edges
 builder.add_edge(START, "initialize")
