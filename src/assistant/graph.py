@@ -1,5 +1,6 @@
+# graph.py
 import json
-from enum import Enum 
+from enum import Enum
 from typing_extensions import Literal
 
 from langchain_core.messages import HumanMessage, SystemMessage
@@ -422,6 +423,7 @@ def format_analysis(analysis):
 
 def update_mind_map(state: SummaryState, config: RunnableConfig) -> SummaryState:
     """Mind Map 업데이트 및 쿼리 처리"""
+
     try:
         # Mind Map 에이전트 초기화
         mind_map = MindMapAgent(
@@ -429,60 +431,44 @@ def update_mind_map(state: SummaryState, config: RunnableConfig) -> SummaryState
             username=os.getenv("NEO4J_USERNAME"),
             password=os.getenv("NEO4J_PASSWORD")
         )
-        
+        # running_summary 가공.
         current_summary = state.running_summary
         if isinstance(current_summary, list):
             current_summary = "\n".join(f"- {item}" for item in current_summary)
         elif current_summary is None:
             current_summary = ""
-        
-        # 토큰 처리
+
+        # [MIND_MAP_QUERY] 토큰 처리
         if isinstance(current_summary, str) and "[MIND_MAP_QUERY]" in current_summary:
-            # 쿼리 토큰 발견 시
-            query_parts = current_summary.split("[MIND_MAP_QUERY]")
-            if len(query_parts) > 1:
-                query_content = query_parts[1].split("[/MIND_MAP_QUERY]")[0]
-                token = MindMapToken(
-                    type=MindMapTokenType.QUERY,
-                    query=query_content.strip(),
-                    context=current_summary
-                )
-        else:
-            # 일반 업데이트
-            token = MindMapToken(
-                type=MindMapTokenType.UPDATE,
-                query="",
-                context=str(current_summary)
+            # 1. 쿼리 추출
+            query_start = current_summary.find("[MIND_MAP_QUERY]") + len("[MIND_MAP_QUERY]")
+            query_end = current_summary.find("[/MIND_MAP_QUERY]")
+            query = current_summary[query_start:query_end].strip()
+
+            # 2. Mind Map 쿼리 실행
+            query_result = mind_map.query_mind_map(query)
+
+            # 3. 결과 통합 (MindMap 쿼리/응답 부분만 변경)
+            updated_summary = current_summary.replace(f"[MIND_MAP_QUERY]{query}[/MIND_MAP_QUERY]", f"Mind Map Query Result:\n{query_result}")
+
+            # 4. MindMap 작업 결과 저장
+            save_research_process(
+                state,
+                "Mind Map Operation",
+                f"Operation Type: QUERY\nQuery: {query}\nResult:\n{query_result}"
             )
-        
-        result = mind_map.process_token(token)
-        
-        # 결과 저장
-        operation_result = {
-            "operation_type": token.type.value,
-            "result": result
-        }
-        
-        save_research_process(
-            state,
-            "Mind Map Operation",
-            json.dumps(operation_result, indent=2, ensure_ascii=False)
-        )
-        
-        # Mind Map 쿼리 결과를 running_summary에 통합
-        if token.type == MindMapTokenType.QUERY:
-            updated_summary = f"{current_summary}\n\nMind Map Query Result:\n{result}"
-        else:
-            updated_summary = current_summary
-        
-        return SummaryState(
-            research_topic=state.research_topic,
-            running_summary=updated_summary,
-            needs_external_info=True,  # Mind Map 업데이트 후 항상 추론으로 돌아감
-            research_loop_count=state.research_loop_count,
-            web_research_results=state.web_research_results,
-            search_query=state.search_query
-        )
+            # 5. 상태 업데이트 (research_loop_count 증가 안함)
+            return SummaryState(
+                research_topic=state.research_topic,
+                running_summary=updated_summary, # 변경된 부분
+                needs_external_info=True,
+                research_loop_count=state.research_loop_count, # 여기!
+                web_research_results=state.web_research_results,
+                search_query=state.search_query
+            )
+
+        # 일반 업데이트 (Mind Map 저장) : 이부분은 reason_from_sources에서 처리
+        return state
         
     except Exception as e:
         print(f"Mind Map 처리 중 오류 발생: {e}")
@@ -493,9 +479,20 @@ def update_mind_map(state: SummaryState, config: RunnableConfig) -> SummaryState
         )
         return state  # 오류 발생 시 원래 상태 반환
 
-
 def reason_from_sources(state: SummaryState, config: RunnableConfig):
     """주제에 대한 심층 분석 및 추론 수행"""
+
+    # Mind Map Agent 초기화 (에러 방지)
+    try:
+        mind_map = MindMapAgent(
+            url=os.getenv("NEO4J_URL"),
+            username=os.getenv("NEO4J_USERNAME"),
+            password=os.getenv("NEO4J_PASSWORD")
+        )
+    except Exception as e:
+        print("NEO4J 연결 정보가 없거나, 잘못되었습니다.")
+        return
+
     # 상태 확인을 위한 로깅 추가
     print(f"Reasoning about topic: {state.research_topic}")
     print(f"Current state: {state}")
@@ -503,9 +500,9 @@ def reason_from_sources(state: SummaryState, config: RunnableConfig):
     existing_analysis = state.running_summary
     current_context = state.web_research_results[-1] if state.web_research_results else ""
 
-# 추론 지시사항 수정
+    # 추론 지시사항 수정
     reasoning_prompt = """당신은 주어진 주제에 대해 심층적인 분석과 추론을 수행하는 전문 연구원입니다.
-
+    
 현재 진행 상황: {current_iteration}/5회차
 
 [중요 제한사항]
@@ -525,7 +522,7 @@ def reason_from_sources(state: SummaryState, config: RunnableConfig):
    - 새로운 정보가 반드시 필요한 경우에만 사용
 
 추론에 대한 방향을 다시 설정하거나 정보 수집을 위한 방법:
-1. <MINDMAP>질의</MINDMAP> : 마인드맵 조회 요청
+1. [MIND_MAP_QUERY]질의[/MIND_MAP_QUERY] : 마인드맵 질의 요청
    - 이전 분석 내용을 참조할 때 사용
    - 검색 횟수를 소비하지 않음
    - 예시 질의:
@@ -539,27 +536,22 @@ def reason_from_sources(state: SummaryState, config: RunnableConfig):
 3. 마지막 검색들은 핵심 격차를 메우는데 사용
 4. 5회차에서는 반드시 최종 결론 도출
 
-중요: 반드시 아래 JSON 형식으로만 응답해주세요. 다른 텍스트나 설명을 추가하지 마세요."""
+중요: 아래 지침에 따라 응답을 구성해야 합니다.
+
+1. **추론**: 현재까지의 연구 결과를 바탕으로 추론을 진행합니다.
+2. **마인드맵 업데이트**: 현재 추론 단계의 내용을 바탕으로 마인드맵을 업데이트합니다.  `[MIND_MAP_UPDATE]` 태그는 사용하지 않습니다. 추론 내용 전체가 자동 저장됩니다.
+3. **마인드맵 쿼리**:  마인드맵에 질의가 필요한 경우, `[MIND_MAP_QUERY]질의[/MIND_MAP_QUERY]` 형식으로 질의를 포함합니다.
+4. **웹 검색**: 새로운 정보가 필요한 경우, `<SEARCH>검색어</SEARCH>` 형식으로 검색어를 포함합니다.
+5. **JSON 형식 응답 (더 이상 사용 안 함)**: 자유 형식의 텍스트로 추론 결과를 작성합니다.
+
+"""
 
     human_message = (
         f"<연구 주제>\n{state.research_topic}\n</연구 주제>\n\n"
         f"<현재 맥락>\n{current_context}\n</현재 맥락>\n\n"
         f"<기존 분석>\n{existing_analysis or '아직 분석이 없습니다.'}\n</기존 분석>\n\n"
         f"<남은 검색 횟수>\n{5 - (state.research_loop_count or 0)}회\n</남은 검색 횟수>\n\n"
-        f"""응답 형식:
-{{
-    "reasoning_step": "현재 추론 단계 설명",
-    "current_analysis": {{
-        "findings": ["현재까지의 발견사항"],
-        "gaps": ["확인된 정보 격차"],
-        "completeness": "현재까지의 분석 완성도 평가"
-    }},
-    "next_action": {{
-        "type": "continue | search | mindmap",
-        "query": "검색어 또는 질의 (action이 continue가 아닌 경우, 검색어는 400자 이내)",
-        "rationale": "이 행동을 선택한 이유 (남은 검색 횟수 고려)"
-    }}
-}}"""
+        f"응답 지침:\n위의 지침을 따르고, 자유 형식의 텍스트로 추론 결과를 작성합니다."
     )
 
     llm = ChatGoogleGenerativeAI(
@@ -567,108 +559,78 @@ def reason_from_sources(state: SummaryState, config: RunnableConfig):
         temperature=0,
         convert_system_message_to_human=True
     )
-    
+
     try:
         result = llm.invoke(
             [SystemMessage(content=reasoning_prompt.format(current_iteration=state.research_loop_count + 1)),
              HumanMessage(content=human_message)]
         )
-        
-        # LLM 응답 로깅 (JSON 파싱 전)
+
+        # LLM 응답 로깅
         save_research_process(
             state,
-            "Raw LLM Response",
+            "Raw LLM Response (Reasoning)",
             f"System Prompt:\n{reasoning_prompt.format(current_iteration=state.research_loop_count + 1)}\n\n"
             f"Human Message:\n{human_message}\n\n"
             f"Raw Response:\n{result.content}"
         )
-        
-        try:
-            # 마크다운 코드 블록 제거
-            content = result.content
-            if "```json" in content:
-                content = content.split("```json")[1].split("```")[0].strip()
-            elif "```" in content:
-                content = content.split("```")[1].split("```")[0].strip()
-                
-            analysis = json.loads(content)
-            
-            # 파싱된 JSON 로깅 추가
-            save_research_process(
-                state,
-                "Parsed JSON",
-                f"Cleaned content:\n{content}\n\n"
-                f"Parsed analysis:\n{json.dumps(analysis, indent=2, ensure_ascii=False)}"
-            )
-            
-        except json.JSONDecodeError as e:
-            print(f"JSON 파싱 에러: {e}")
-            print(f"LLM 응답: {result.content}")
-            print(f"정제된 콘텐츠: {content}")
-            raise
-        
-        # 추론 과정 저장
-        save_research_process(
-            state,
-            "Reasoning Step",
-            f"Current Context:\n{current_context}\n\n"
-            f"Analysis:\n{json.dumps(analysis, indent=2, ensure_ascii=False)}"
-        )
 
-        # Mind Map 업데이트를 위한 토큰 확인
+        # Mind Map 업데이트 (쿼리 토큰 처리 전에 수행)
+        if mind_map: # mind_map 객체가 None이 아닐때만(Neo4j 연결이 정상일 때)
+            try:
+                mind_map.add_reasoning_step(state.research_topic, result.content) # type 인자 제거
+                save_research_process(state, "Mind Map Update", f"Updated with reasoning content:\n{result.content}")
+            except Exception as e:
+                print(f"Mind Map 업데이트 중 오류 발생: {e}")
+                save_research_process(state, "Mind Map Update Error", str(e))
+
+        # Mind Map 쿼리 토큰 처리
         if "[MIND_MAP_QUERY]" in result.content:
             return SummaryState(
                 research_topic=state.research_topic,
+                running_summary=result.content,  # 토큰 포함 전체 내용
+                needs_external_info=True,
+                research_loop_count=state.research_loop_count, # 카운트 증가 안함
+                web_research_results=state.web_research_results,
                 search_query=state.search_query,
-                running_summary=result.content,  # 토큰을 포함한 전체 응답 전달
-                needs_external_info=True,
-                research_loop_count=state.research_loop_count,
-                web_research_results=state.web_research_results
+
             )
-        
-        # 다음 액션에 따라 상태 업데이트
-        if analysis["next_action"]["type"] == "search":
+        # 웹 검색 토큰 처리
+        elif "<SEARCH>" in result.content and "</SEARCH>" in result.content:
+            start = result.content.find("<SEARCH>") + len("<SEARCH>")
+            end = result.content.find("</SEARCH>")
+            search_query = result.content[start:end].strip()
+
+            # 새로운 search_query를 포함한 상태 반환, research_loop_count 증가
             return SummaryState(
                 research_topic=state.research_topic,
-                search_query=analysis["next_action"]["query"],
-                running_summary=analysis["current_analysis"].get("findings", []),
+                running_summary=result.content,  # 토큰을 포함한 전체 응답
                 needs_external_info=True,
-                research_loop_count=(state.research_loop_count or 0) + 1,
-                web_research_results=state.web_research_results
+                research_loop_count=state.research_loop_count + 1,  # 검색 횟수 증가
+                web_research_results=state.web_research_results,
+                search_query=search_query
             )
-        elif analysis["next_action"]["type"] == "continue":
-            final_analysis = format_analysis(analysis)
-            
-            # 최종 분석 저장
-            save_research_process(
-                state,
-                "Final Analysis",
-                f"Reasoning Complete\n\n{final_analysis}"
-            )
-            
+        else:  # 더 이상 외부 정보가 필요 없는 경우 (최종 결과)
             return SummaryState(
                 research_topic=state.research_topic,
-                running_summary=final_analysis,
+                running_summary=result.content,
                 needs_external_info=False,
-                research_loop_count=(state.research_loop_count or 0) + 1,
+                research_loop_count=state.research_loop_count + 1, # 카운트 증가
                 web_research_results=state.web_research_results,
                 search_query=state.search_query
             )
-            
+
     except Exception as e:
-        print(f"Error in reasoning: {e}")
-        save_research_process(
-            state,
-            "Reasoning Error",
-            f"Error occurred: {str(e)}"
-        )
+        print(f"추론 중 오류 발생: {e}")
+        save_research_process(state, "Reasoning Error", str(e))
+        # 오류 발생 시, needs_external_info를 False로 설정하여 종료
         return SummaryState(
             research_topic=state.research_topic,
             running_summary=state.running_summary,
             needs_external_info=False,
-            research_loop_count=(state.research_loop_count or 0) + 1,
+            research_loop_count=state.research_loop_count + 1,
             web_research_results=state.web_research_results,
-            search_query=state.search_query
+            search_query= state.search_query
         )
 
 def format_final_report(state: SummaryState) -> SummaryState:
@@ -753,13 +715,13 @@ builder.add_node("initialize", initialize_research)
 builder.add_node("reason_from_sources", reason_from_sources)
 builder.add_node("web_research", web_research)
 builder.add_node("generate_final_report", format_final_report)
-builder.add_node("update_mind_map", update_mind_map)
+builder.add_node("update_mind_map", update_mind_map) # 이 노드는 이제 사용하지 않음
 
 # Add edges
 builder.add_edge(START, "initialize")
 builder.add_edge("initialize", "reason_from_sources")
 builder.add_edge("web_research", "reason_from_sources")
-builder.add_edge("update_mind_map", "reason_from_sources")
+# builder.add_edge("update_mind_map", "reason_from_sources") # 이 엣지는 이제 사용하지 않음
 
 builder.add_conditional_edges(
     "reason_from_sources",
@@ -773,5 +735,3 @@ builder.add_conditional_edges(
 builder.add_edge("generate_final_report", END)
 
 graph = builder.compile()
-
-

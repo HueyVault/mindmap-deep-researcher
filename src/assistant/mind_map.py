@@ -1,3 +1,4 @@
+# mind_map.py
 from typing import Dict, List, Optional
 from datetime import datetime
 from langchain_community.graphs import Neo4jGraph
@@ -39,7 +40,8 @@ class MindMapAgent:
         if token.type == MindMapTokenType.QUERY:
             return self.query_mind_map(token.query)
         elif token.type == MindMapTokenType.UPDATE:
-            return self.add_reasoning_step("", token.context)
+            # step_type 인자 제거 (이제는 항상 추론 단계에서 저장)
+            return self.add_reasoning_step("", token.context) # research_topic 빈문자열로 전달
         return ""
 
     def cluster_and_summarize(self) -> List[Dict]:
@@ -91,7 +93,7 @@ class MindMapAgent:
         for constraint in constraints:
             self.graph.query(constraint)
             
-    def add_reasoning_step(self, research_topic: str, reasoning_content: str, step_type: str) -> str:
+    def add_reasoning_step(self, research_topic: str, reasoning_content: str) -> str: # step_type 제거
         """추론 단계를 Mind Map에 추가"""
         step_id = f"step_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
         
@@ -101,14 +103,12 @@ class MindMapAgent:
             MERGE (s:ReasoningStep {id: $step_id})
             SET s.content = $content,
                 s.timestamp = datetime(),
-                s.topic = $topic,
-                s.type = $type
-            """,
+                s.topic = $topic
+            """, # type 제거
             {
                 "step_id": step_id,
                 "content": reasoning_content,
                 "topic": research_topic,
-                "type": step_type
             }
         )
 
@@ -199,7 +199,7 @@ class MindMapAgent:
         elif intent["intent"] == "logical":
             cypher_query = self._generate_logical_query(intent)
         else:
-            cypher_query = self._generate_basic_query(intent)
+            cypher_query = self._generate_basic_query(intent) # 여기를 수정해야함
             
         # 3. 쿼리 실행 및 결과 포맷팅
         results = self.graph.query(cypher_query)
@@ -229,3 +229,49 @@ class MindMapAgent:
         
         response = self.llm.invoke([HumanMessage(content=prompt)])
         return response.content.strip()
+
+    def _generate_basic_query(self, intent:dict):
+        # 기본적인 질의 로직 구현 (간단한 예시)
+        focus_str = ' AND '.join(f"n.label CONTAINS '{focus}'" for focus in intent['focus'])
+        query = f"""
+        MATCH (n:Concept)
+        WHERE {focus_str}
+        RETURN n.label AS concept, n.description AS description
+        LIMIT 5
+        """
+        return query
+    
+    def _generate_temporal_query(self, intent: dict):
+        """시간 관련 쿼리 생성 (구현 필요)"""
+        # 예시: 최근 추론 단계 검색
+        if intent['temporal_range'] == 'recent':
+            query = """
+            MATCH (s:ReasoningStep)
+            WITH s
+            ORDER BY s.timestamp DESC
+            LIMIT 5
+            RETURN s.content AS recent_reasoning_steps
+            """
+      
+        else: #all, specific
+            query = """
+            MATCH (s:ReasoningStep)             
+            RETURN s.content AS reasoning_steps, s.timestamp as timestamp
+            ORDER BY s.timestamp
+            """
+        return query
+
+    def _generate_logical_query(self, intent: dict):
+        """논리적 관계 쿼리 생성 (구현 필요)"""
+        # 예시: 두 개념 간의 관계 찾기
+
+        focus = intent['focus']
+        if len(focus) < 2 :
+            return "" # focus가 2개 미만이면 빈 문자열 반환
+
+        query = f"""
+        MATCH (c1:Concept)-[r]-(c2:Concept)
+        WHERE c1.label = '{focus[0]}' AND c2.label = '{focus[1]}'
+        RETURN type(r) AS relationship, r.confidence AS confidence
+        """
+        return query
