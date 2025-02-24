@@ -1,4 +1,4 @@
-# mind_map.py
+
 from typing import Dict, List, Optional
 from datetime import datetime
 from langchain_community.graphs import Neo4jGraph
@@ -40,36 +40,46 @@ class MindMapAgent:
         if token.type == MindMapTokenType.QUERY:
             return self.query_mind_map(token.query)
         elif token.type == MindMapTokenType.UPDATE:
-            # step_type 인자 제거 (이제는 항상 추론 단계에서 저장)
-            return self.add_reasoning_step("", token.context) # research_topic 빈문자열로 전달
+            return self.add_reasoning_step("", token.context)
         return ""
 
     def cluster_and_summarize(self) -> List[Dict]:
         """추론 컨텍스트를 클러스터링하고 요약"""
-        # 1. 커뮤니티 클러스터링 수행
+        # 1. 커뮤니티 클러스터링 수행 (Louvain 알고리즘 사용)
         clusters = self.graph.query("""
-        CALL gds.louvain.stream('reasoning-graph')
-        YIELD nodeId, communityId
-        RETURN communityId, collect(nodeId) as nodes
+            CALL gds.louvain.stream('reasoning-graph')
+            YIELD nodeId, communityId
+            WITH communityId, collect(nodeId) AS nodeIds
+            WHERE size(nodeIds) > 1  // 최소 2개 이상의 노드가 있는 커뮤니티만 필터링 (선택 사항)
+            RETURN communityId, nodeIds
         """)
+
+
         
         summaries = []
         for cluster in clusters:
             # 2. 각 클러스터의 노드 내용 수집
-            nodes = self.graph.query(f"""
+            nodes_content = self.graph.query(f"""
             MATCH (n)
-            WHERE id(n) IN {cluster['nodes']}
+            WHERE id(n) IN {cluster['nodeIds']}
             RETURN collect(n.content) as contents
             """)
             
             # 3. LLM을 사용하여 클러스터 요약 생성
-            summary = self._generate_cluster_summary(nodes[0]['contents'])
-            summaries.append({
-                "cluster_id": cluster['communityId'],
-                "summary": summary
-            })
+            if nodes_content and nodes_content[0]['contents']:
+                summary = self._generate_cluster_summary(nodes_content[0]['contents'])
+                summaries.append({
+                    "cluster_id": cluster['communityId'],
+                    "summary": summary
+                })
+            else:
+                summaries.append({
+                    "cluster_id": cluster['communityId'],
+                    "summary": "No content to summarize for this cluster."
+                })
             
         return summaries
+
 
     def _generate_cluster_summary(self, contents: List[str]) -> str:
         """LLM을 사용하여 클러스터 내용 요약"""
@@ -93,7 +103,7 @@ class MindMapAgent:
         for constraint in constraints:
             self.graph.query(constraint)
             
-    def add_reasoning_step(self, research_topic: str, reasoning_content: str) -> str: # step_type 제거
+    def add_reasoning_step(self, research_topic: str, reasoning_content: str, step_type: str) -> str:
         """추론 단계를 Mind Map에 추가"""
         step_id = f"step_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
         
@@ -103,12 +113,14 @@ class MindMapAgent:
             MERGE (s:ReasoningStep {id: $step_id})
             SET s.content = $content,
                 s.timestamp = datetime(),
-                s.topic = $topic
-            """, # type 제거
+                s.topic = $topic,
+                s.type = $type
+            """,
             {
                 "step_id": step_id,
                 "content": reasoning_content,
                 "topic": research_topic,
+                "type": step_type
             }
         )
 
@@ -199,7 +211,7 @@ class MindMapAgent:
         elif intent["intent"] == "logical":
             cypher_query = self._generate_logical_query(intent)
         else:
-            cypher_query = self._generate_basic_query(intent) # 여기를 수정해야함
+            cypher_query = self._generate_basic_query(intent)
             
         # 3. 쿼리 실행 및 결과 포맷팅
         results = self.graph.query(cypher_query)
@@ -229,49 +241,3 @@ class MindMapAgent:
         
         response = self.llm.invoke([HumanMessage(content=prompt)])
         return response.content.strip()
-
-    def _generate_basic_query(self, intent:dict):
-        # 기본적인 질의 로직 구현 (간단한 예시)
-        focus_str = ' AND '.join(f"n.label CONTAINS '{focus}'" for focus in intent['focus'])
-        query = f"""
-        MATCH (n:Concept)
-        WHERE {focus_str}
-        RETURN n.label AS concept, n.description AS description
-        LIMIT 5
-        """
-        return query
-    
-    def _generate_temporal_query(self, intent: dict):
-        """시간 관련 쿼리 생성 (구현 필요)"""
-        # 예시: 최근 추론 단계 검색
-        if intent['temporal_range'] == 'recent':
-            query = """
-            MATCH (s:ReasoningStep)
-            WITH s
-            ORDER BY s.timestamp DESC
-            LIMIT 5
-            RETURN s.content AS recent_reasoning_steps
-            """
-      
-        else: #all, specific
-            query = """
-            MATCH (s:ReasoningStep)             
-            RETURN s.content AS reasoning_steps, s.timestamp as timestamp
-            ORDER BY s.timestamp
-            """
-        return query
-
-    def _generate_logical_query(self, intent: dict):
-        """논리적 관계 쿼리 생성 (구현 필요)"""
-        # 예시: 두 개념 간의 관계 찾기
-
-        focus = intent['focus']
-        if len(focus) < 2 :
-            return "" # focus가 2개 미만이면 빈 문자열 반환
-
-        query = f"""
-        MATCH (c1:Concept)-[r]-(c2:Concept)
-        WHERE c1.label = '{focus[0]}' AND c2.label = '{focus[1]}'
-        RETURN type(r) AS relationship, r.confidence AS confidence
-        """
-        return query
