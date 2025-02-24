@@ -369,7 +369,7 @@ def route_research(state: SummaryState) -> Literal["web_research", "review_summa
     4-5회: 계속 검색
     6회 이상: 종료
     """
-    if state.research_loop_count >= 6:  # 6회 이상이면 종료
+    if state.research_loop_count >= 2:  # 6회 이상이면 종료
         return "finalize_summary"
     # elif state.research_loop_count == 3:  # 3회차에 리뷰
     #     return "review_summary"
@@ -382,7 +382,7 @@ def route_after_review(state: SummaryState) -> Literal["web_research", "finalize
     3회 리뷰 후: 다시 검색으로
     6회 이상: 종료
     """
-    if state.research_loop_count >= 6:  # 6회 이상이면 종료
+    if state.research_loop_count >= 2:  # 6회 이상이면 종료
         return "finalize_summary"
     return "web_research"  # 그 외에는 다시 검색
     
