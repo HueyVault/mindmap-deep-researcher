@@ -796,28 +796,17 @@ builder = StateGraph(SummaryState, input=SummaryStateInput, output=SummaryStateO
 builder.add_node("initialize", initialize_research)
 builder.add_node("reason_from_sources", reason_from_sources)
 builder.add_node("web_research", web_research)
-builder.add_node("review_summary", review_summary)
 builder.add_node("finalize_summary", format_final_report)
 
 # 엣지 추가
 builder.add_edge(START, "initialize")
-builder.add_edge("initialize", "web_research")
+builder.add_edge("initialize", "reason_from_sources")
 builder.add_edge("web_research", "reason_from_sources")
 
 # 동적 분기 처리
 builder.add_conditional_edges(
     "reason_from_sources",
-    route_research,  # 이 함수가 config를 받아야 함
-    {
-        "web_research": "web_research",
-        "review_summary": "review_summary",
-        "finalize_summary": "finalize_summary"
-    }
-)
-
-builder.add_conditional_edges(
-    "review_summary",
-    route_after_review,  # 이 함수가 config를 받아야 함
+    lambda x: "web_research" if x.needs_external_info else "finalize_summary",
     {
         "web_research": "web_research",
         "finalize_summary": "finalize_summary"
@@ -825,5 +814,6 @@ builder.add_conditional_edges(
 )
 
 builder.add_edge("finalize_summary", END)
+
 
 graph = builder.compile()
