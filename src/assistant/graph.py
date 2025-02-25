@@ -521,11 +521,36 @@ def reason_from_sources(state: SummaryState, config: RunnableConfig):
             search_query = f"이 연구에서 이미 발견한 중요한 사실은 무엇인가요? 주제: {state.research_topic}"
             mind_map_context = mind_map.retrieve_context(search_query, state.research_topic)
         
-        # 추론용 프롬프트 구성 (Mind Map 컨텍스트 포함)
-        reasoner_instructions_with_context = reasoner_instructions.format(
-            research_topic=state.research_topic,
-            mind_map_context=mind_map_context if mind_map_context else "마인드맵에 아직 충분한 정보가 없습니다."
-        )
+        # 추론용 프롬프트 수정 - JSON 형식 오류 방지
+        modified_reasoner_instructions = """당신은 주어진 주제에 대해 심층적인 분석과 추론을 수행하는 전문 연구원입니다.
+
+<목표>
+주제에 대한 깊이 있는 이해와 통찰을 제공하는 것이 목적입니다.
+
+<추론 프로세스>
+1. 정보 통합
+   - 여러 출처의 정보를 비교/대조
+   - 상충되는 관점 식별
+   - 핵심 트렌드와 패턴 파악
+
+2. 심층 분석
+   - 표면적 사실을 넘어선 근본 원인 탐구
+   - 다양한 관점에서의 영향 평가
+   - 잠재적 함의와 시사점 도출
+
+3. 비판적 사고
+   - 주장의 타당성 평가
+   - 한계점과 제약사항 식별
+   - 대안적 해석 제시
+
+<마인드맵 컨텍스트>
+{mind_map_context}
+
+<연구 주제>
+{research_topic}
+
+주제에 대한 철저한 분석을 텍스트 형식으로 제공하세요. 분석은 핵심 인사이트, 주요 쟁점, 도전과제, 그리고 미래 방향성을 포함해야 합니다. JSON 형식이 아닌 일반 텍스트로 응답해주세요.
+"""
         
         # LLM 설정
         llm = ChatGoogleGenerativeAI(
@@ -543,9 +568,12 @@ def reason_from_sources(state: SummaryState, config: RunnableConfig):
             f"Mind Map Context: {mind_map_context}"
         )
         
-        # LLM으로 추론 수행
+        # LLM으로 추론 수행 (JSON 형식이 아닌 텍스트 형식으로 응답 요청)
         result = llm.invoke([
-            SystemMessage(content=reasoner_instructions_with_context),
+            SystemMessage(content=modified_reasoner_instructions.format(
+                research_topic=state.research_topic,
+                mind_map_context=mind_map_context if mind_map_context else "마인드맵에 아직 충분한 정보가 없습니다."
+            )),
             HumanMessage(content=f"""
             연구 주제: {state.research_topic}
             

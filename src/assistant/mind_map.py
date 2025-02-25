@@ -22,14 +22,8 @@ class MindMapAgent:
         self._create_schema()
         
     def initialize_for_topic(self, research_topic: str):
-        """새로운 연구 주제에 대한 Mind Map 초기화
-        
-        Args:
-            research_topic (str): 새 연구 주제
-        """
-        # 1. 기존에 같은 주제의 노드가 있다면 모두 삭제
-        topic_id = re.sub(r'\W+', '_', research_topic.lower())
-        
+        """새로운 연구 주제에 대한 Mind Map 완전 초기화"""
+        # 기존 데이터 전체 삭제 (완전 초기화)
         try:
             # 먼저 기존 그래프 프로젝션 삭제
             self.graph.query("CALL gds.graph.drop('reasoning-graph', false) YIELD graphName")
@@ -37,10 +31,18 @@ class MindMapAgent:
             # 첫 실행 시에는 그래프가 없을 수 있으므로 무시
             print(f"그래프 프로젝션 삭제 중 오류 (무시 가능): {e}")
         
+        # 기존 데이터 전체 삭제
+        try:
+            self.graph.query("MATCH (n) DETACH DELETE n")
+            print("기존 Mind Map 데이터 모두 삭제됨")
+        except Exception as e:
+            print(f"데이터 삭제 중 오류: {e}")
+        
         # 연구 주제 노드 생성
+        topic_id = re.sub(r'\W+', '_', research_topic.lower())
         self.graph.query(
             """
-            MERGE (t:Topic {id: $topic_id})
+            CREATE (t:Topic {id: $topic_id})
             SET t.name = $topic,
                 t.timestamp = datetime()
             """,
@@ -51,7 +53,6 @@ class MindMapAgent:
         )
         
         print(f"새 연구 주제에 대한 Mind Map 초기화 완료: {research_topic}")
-        
         # 3. 그래프 프로젝션 준비 (최소 1개의 노드가 필요)
         # 위에서 생성한 Topic 노드가 있으므로 이제 프로젝션 시도 가능
         try:
