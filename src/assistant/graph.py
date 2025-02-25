@@ -521,11 +521,16 @@ def reason_from_sources(state: SummaryState, config: RunnableConfig):
             search_query = f"이 연구에서 이미 발견한 중요한 사실은 무엇인가요? 주제: {state.research_topic}"
             mind_map_context = mind_map.retrieve_context(search_query, state.research_topic)
         
-        # 추론용 프롬프트 수정 - JSON 형식 오류 방지
+        # 추론용 프롬프트 수정 - 원래 버전의 중요 기능 복원
         modified_reasoner_instructions = """당신은 주어진 주제에 대해 심층적인 분석과 추론을 수행하는 전문 연구원입니다.
+        
+현재 진행 상황: {current_iteration}/6회차
 
-<목표>
-주제에 대한 깊이 있는 이해와 통찰을 제공하는 것이 목적입니다.
+[중요 제한사항]
+- 웹 검색은 전체 연구 과정에서 최대 6회만 허용됩니다
+- 각 검색은 신중하게 선택되어야 하며, 연구의 핵심 질문을 해결하는데 집중해야 합니다
+- 불필요한 검색은 제한된 기회를 낭비하게 됩니다
+- 마지막 회차에서는 반드시 결론을 도출해야 합니다
 
 <추론 프로세스>
 1. 정보 통합
@@ -543,13 +548,27 @@ def reason_from_sources(state: SummaryState, config: RunnableConfig):
    - 한계점과 제약사항 식별
    - 대안적 해석 제시
 
+정보 수집을 위한 방법:
+1. <SEARCH>검색어</SEARCH> : 웹 검색 요청 (최대 400자)
+   - 남은 검색 횟수를 고려하여 신중하게 사용
+   - 새로운 정보가 반드시 필요한 경우에만 사용
+
+추론에 대한 방향을 다시 설정하거나 정보 수집을 위한 방법:
+1. [MIND_MAP_QUERY]질의[/MIND_MAP_QUERY] : 마인드맵 질의 요청
+   - 이전 분석 내용을 참조할 때 사용
+   - 검색 횟수를 소비하지 않음
+   - 예시 질의:
+     * "개념 X와 Y의 관계는?"
+     * "지금까지 발견된 주요 과제들은?"
+     * "이전 분석에서 언급된 기술적 세부사항은?"
+
 <마인드맵 컨텍스트>
 {mind_map_context}
 
 <연구 주제>
 {research_topic}
 
-주제에 대한 철저한 분석을 텍스트 형식으로 제공하세요. 분석은 핵심 인사이트, 주요 쟁점, 도전과제, 그리고 미래 방향성을 포함해야 합니다. JSON 형식이 아닌 일반 텍스트로 응답해주세요.
+주제에 대한 철저한 분석을 텍스트 형식으로 제공하세요. 필요시 <SEARCH> 태그나 [MIND_MAP_QUERY] 태그를 사용하여 추가 정보를 요청할 수 있습니다. JSON 형식이 아닌 일반 텍스트로 응답해주세요.
 """
         
         # LLM 설정
@@ -568,23 +587,33 @@ def reason_from_sources(state: SummaryState, config: RunnableConfig):
             f"Mind Map Context: {mind_map_context}"
         )
         
-        # LLM으로 추론 수행 (JSON 형식이 아닌 텍스트 형식으로 응답 요청)
+        # LLM으로 추론 수행 (프롬프트 수정)
         result = llm.invoke([
             SystemMessage(content=modified_reasoner_instructions.format(
                 research_topic=state.research_topic,
-                mind_map_context=mind_map_context if mind_map_context else "마인드맵에 아직 충분한 정보가 없습니다."
+                mind_map_context=mind_map_context if mind_map_context else "마인드맵에 아직 충분한 정보가 없습니다.",
+                current_iteration=state.research_loop_count + 1
             )),
             HumanMessage(content=f"""
-            연구 주제: {state.research_topic}
+            <연구 주제>
+            {state.research_topic}
+            </연구 주제>
             
-            이전 분석:
-            {current_summary}
-            
-            웹 검색 결과:
+            <현재 맥락>
             {formatted_sources}
+            </현재 맥락>
             
-            마인드맵 컨텍스트:
-            {mind_map_context}
+            <기존 분석>
+            {current_summary or '아직 분석이 없습니다.'}
+            </기존 분석>
+            
+            <남은 검색 횟수>
+            {6 - (state.research_loop_count or 0)}회
+            </남은 검색 횟수>
+            
+            응답 지침:
+            위의 지침을 따르고, 자유 형식의 텍스트로 추론 결과를 작성합니다.
+            필요시 <SEARCH> 태그나 [MIND_MAP_QUERY] 태그를 사용하세요.
             """)
         ])
         

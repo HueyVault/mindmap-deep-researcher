@@ -53,19 +53,7 @@ class MindMapAgent:
         )
         
         print(f"새 연구 주제에 대한 Mind Map 초기화 완료: {research_topic}")
-        # 3. 그래프 프로젝션 준비 (최소 1개의 노드가 필요)
-        # 위에서 생성한 Topic 노드가 있으므로 이제 프로젝션 시도 가능
-        try:
-            self.graph.query("""
-            CALL gds.graph.project.cypher(
-                'reasoning-graph',
-                'MATCH (n) RETURN id(n) AS id',
-                'MATCH (a)-[r]->(b) RETURN id(a) AS source, id(b) AS target, type(r) AS type',
-                {validateRelationships: false}
-            )
-            """)
-        except Exception as e:
-            print(f"그래프 프로젝션 초기화 중 오류 (새 연구 시작 시 정상): {e}")
+        # 그래프 프로젝션은 실제 관계가 생성된 후에 필요한 때 생성하도록 제거
 
     def _create_schema(self):
         """Neo4j 스키마 초기화 및 제약조건 생성"""
@@ -438,3 +426,131 @@ Cypher 쿼리만 반환해주세요.
             return result.content.strip()
         except Exception as e:
             return f"요약 생성 중 오류: {str(e)}"
+        
+
+    def _extract_concepts(self, content: str) -> List[Dict]:
+        """텍스트에서 핵심 개념을 추출
+        
+        Returns:
+            List[Dict]: 추출된 개념 리스트 
+            [{"id": "concept_id", "label": "개념명", "description": "설명", "confidence": 0.9}]
+        """
+        if not content or content.strip() == "":
+            return []
+            
+        prompt = f"""다음 텍스트에서 핵심 개념(entities, concepts)을 최대 10개 추출해주세요:
+        
+    {content}
+
+    JSON 형식으로 응답해주세요:
+    {{
+        "concepts": [
+            {{
+                "label": "개념명",
+                "description": "개념에 대한 간략한 설명 (25단어 이내)",
+                "confidence": 0.9  // 정확도 (0.0~1.0)
+            }}
+        ]
+    }}
+    """
+        
+        try:
+            result = self.llm.invoke([HumanMessage(content=prompt)])
+            concepts_data = self._parse_llm_response(result.content)
+            
+            # 개념 ID 생성 및 정규화
+            concepts = []
+            for idx, concept in enumerate(concepts_data.get("concepts", [])):
+                if "label" in concept:
+                    concept_id = re.sub(r'\W+', '_', concept["label"].lower())
+                    concepts.append({
+                        "id": concept_id,
+                        "label": concept["label"],
+                        "description": concept.get("description", ""),
+                        "confidence": concept.get("confidence", 0.8)
+                    })
+            
+            return concepts
+        except Exception as e:
+            print(f"개념 추출 중 오류: {e}")
+            return []
+
+    def _parse_llm_response(self, response: str) -> Dict:
+        """LLM 응답에서 JSON 데이터 추출"""
+        try:
+            # JSON 부분만 추출
+            json_match = re.search(r'({[\s\S]*})', response)
+            if json_match:
+                json_str = json_match.group(1)
+                return json.loads(json_str)
+            else:
+                # JSON 형식이 명확하지 않은 경우 빈 객체 반환
+                return {}
+        except Exception as e:
+            print(f"JSON 파싱 오류: {e}")
+            return {}
+
+    def _extract_cypher_query(self, response: str) -> str:
+        """LLM 응답에서 Cypher 쿼리 추출"""
+        # Cypher 쿼리를 코드 블록 내에서 찾기
+        query_match = re.search(r'```(?:cypher)?\s*([\s\S]*?)```', response)
+        if query_match:
+            return query_match.group(1).strip()
+        
+        # 코드 블록이 없는 경우 전체 텍스트 사용
+        return response.strip()
+
+    def query_mind_map(self, query: str) -> str:
+        """마인드맵에 직접 질의"""
+        if not query:
+            return "질의가 비어 있습니다."
+        
+        cypher_prompt = f"""Neo4j 그래프 데이터베이스에 대한 Cypher 쿼리를 생성해주세요.
+
+    스키마:
+    - (Topic) - 연구 주제
+    - (ReasoningStep) - 추론 단계
+    - (Concept) - 개념 
+    - (Evidence) - 증거
+
+    관계:
+    - (Topic)-[HAS_STEP]->(ReasoningStep)
+    - (Topic)-[HAS_EVIDENCE]->(Evidence)
+    - (ReasoningStep)-[MENTIONS]->(Concept)
+    - (ReasoningStep)-[LEADS_TO]->(ReasoningStep)
+    - (Concept)-[관계유형]->(Concept) - 관계 유형: IS_PART_OF, CAUSES, CORRELATES_WITH, CONTRADICTS, SUPPORTS, IS_TYPE_OF, FOLLOWS
+
+    사용자 질의: {query}
+
+    위 질의에 가장 적합한 Cypher 쿼리를 생성해 주세요.
+    """
+        
+        try:
+            # Cypher 쿼리 생성
+            cypher_result = self.llm.invoke([HumanMessage(content=cypher_prompt)])
+            cypher_query = self._extract_cypher_query(cypher_result.content)
+            
+            # 쿼리 실행
+            try:
+                results = self.graph.query(cypher_query)
+                
+                # 결과 요약
+                if not results:
+                    return "해당 질의에 대한 결과가 없습니다."
+                
+                summary_prompt = f"""다음 Neo4j 쿼리 결과를 사용자가 이해하기 쉽게 요약해주세요:
+                
+    원래 질의: {query}
+    검색 결과: {results}
+
+    5-10문장으로 요약하여 중요 정보만 제공해주세요.
+    """
+                
+                summary_result = self.llm.invoke([HumanMessage(content=summary_prompt)])
+                return summary_result.content
+                
+            except Exception as e:
+                return f"쿼리 실행 중 오류가 발생했습니다: {str(e)}"
+                
+        except Exception as e:
+            return f"마인드맵 질의 중 오류가 발생했습니다: {str(e)}"
