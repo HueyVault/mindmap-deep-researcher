@@ -19,7 +19,7 @@ class Configuration:
     search_api: SearchAPI = SearchAPI.TAVILY
     
     # Neo4j 설정 추가 (기본값 없이)
-    neo4j_url: str
+    neo4j_uri: str
     neo4j_username: str
     neo4j_password: str
 

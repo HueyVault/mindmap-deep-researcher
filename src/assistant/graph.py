@@ -10,9 +10,10 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 from langgraph.graph import START, END, StateGraph
 
 from assistant.configuration import Configuration, SearchAPI
-from assistant.mind_map import MindMapAgent, MindMapToken, MindMapTokenType
+from assistant.mind_map import MindMapAgent
 
 import os
+import re
 
 # Core utilities
 from assistant.utils import (
@@ -432,7 +433,7 @@ def update_mind_map(state: SummaryState, config: RunnableConfig) -> SummaryState
         
         # Mind Map 에이전트 초기화
         mind_map = MindMapAgent(
-            url=configurable.neo4j_url,
+            url=configurable.neo4j_uri,
             username=configurable.neo4j_username,
             password=configurable.neo4j_password
         )
@@ -485,126 +486,103 @@ def update_mind_map(state: SummaryState, config: RunnableConfig) -> SummaryState
         return state  # 오류 발생 시 원래 상태 반환
 
 def reason_from_sources(state: SummaryState, config: RunnableConfig):
-    """주제에 대한 심층 분석 및 추론 수행"""
-
-    # Mind Map Agent 초기화 (에러 방지)
+    """소스로부터 추론 및 다음 단계 결정"""
     try:
         # Configuration에서 Neo4j 설정 가져오기
         configurable = Configuration.from_runnable_config(config)
         
         # Mind Map 에이전트 초기화
         mind_map = MindMapAgent(
-            url=configurable.neo4j_url,
+            url=configurable.neo4j_uri,
             username=configurable.neo4j_username,
             password=configurable.neo4j_password
         )
         
-    except Exception as e:
-        print("NEO4J 연결 정보가 없거나, 잘못되었습니다.")
-        return
-
-    # 상태 확인을 위한 로깅 추가
-    print(f"Reasoning about topic: {state.research_topic}")
-    print(f"Current state: {state}")
-    
-    existing_analysis = state.running_summary
-    current_context = state.web_research_results[-1] if state.web_research_results else ""
-
-    # 추론 지시사항 수정
-    reasoning_prompt = """당신은 주어진 주제에 대해 심층적인 분석과 추론을 수행하는 전문 연구원입니다.
-    
-현재 진행 상황: {current_iteration}/5회차
-
-[중요 제한사항]
-- 웹 검색은 전체 연구 과정에서 최대 5회만 허용됩니다
-- 각 검색은 신중하게 선택되어야 하며, 연구의 핵심 질문을 해결하는데 집중해야 합니다
-- 불필요한 검색은 제한된 기회를 낭비하게 됩니다
-- 마지막 회차에서는 반드시 결론을 도출해야 합니다
-
-추론 시 다음을 고려해주세요:
-1. 현재까지 수집된 정보의 충분성
-2. 남은 검색 기회를 고려한 정보 수집 우선순위
-3. 정보가 충분하다면 최종 결론 도출
-
-정보 수집을 위한 방법:
-1. <SEARCH>검색어</SEARCH> : 웹 검색 요청 (최대 400자)
-   - 남은 검색 횟수를 고려하여 신중하게 사용
-   - 새로운 정보가 반드시 필요한 경우에만 사용
-
-추론에 대한 방향을 다시 설정하거나 정보 수집을 위한 방법:
-1. [MIND_MAP_QUERY]질의[/MIND_MAP_QUERY] : 마인드맵 질의 요청
-   - 이전 분석 내용을 참조할 때 사용
-   - 검색 횟수를 소비하지 않음
-   - 예시 질의:
-     * "개념 X와 Y의 관계는?"
-     * "지금까지 발견된 주요 과제들은?"
-     * "이전 분석에서 언급된 기술적 세부사항은?"
-
-※ 효율적인 연구 전략:
-1. 첫 1-2회 검색으로 핵심 정보 수집
-2. 중간 단계에서는 마인드맵 활용하여 기존 정보 분석
-3. 마지막 검색들은 핵심 격차를 메우는데 사용
-4. 5회차에서는 반드시 최종 결론 도출
-
-중요: 아래 지침에 따라 응답을 구성해야 합니다.
-
-1. **추론**: 현재까지의 연구 결과를 바탕으로 추론을 진행합니다.
-2. **마인드맵 업데이트**: 현재 추론 단계의 내용을 바탕으로 마인드맵을 업데이트합니다.  `[MIND_MAP_UPDATE]` 태그는 사용하지 않습니다. 추론 내용 전체가 자동 저장됩니다.
-3. **마인드맵 쿼리**:  마인드맵에 질의가 필요한 경우, `[MIND_MAP_QUERY]질의[/MIND_MAP_QUERY]` 형식으로 질의를 포함합니다.
-4. **웹 검색**: 새로운 정보가 필요한 경우, `<SEARCH>검색어</SEARCH>` 형식으로 검색어를 포함합니다.
-5. **JSON 형식 응답 (더 이상 사용 안 함)**: 자유 형식의 텍스트로 추론 결과를 작성합니다.
-
-"""
-
-    human_message = (
-        f"<연구 주제>\n{state.research_topic}\n</연구 주제>\n\n"
-        f"<현재 맥락>\n{current_context}\n</현재 맥락>\n\n"
-        f"<기존 분석>\n{existing_analysis or '아직 분석이 없습니다.'}\n</기존 분석>\n\n"
-        f"<남은 검색 횟수>\n{5 - (state.research_loop_count or 0)}회\n</남은 검색 횟수>\n\n"
-        f"응답 지침:\n위의 지침을 따르고, 자유 형식의 텍스트로 추론 결과를 작성합니다."
-    )
-
-    llm = ChatGoogleGenerativeAI(
-        model="gemini-2.0-flash-exp",
-        temperature=0,
-        convert_system_message_to_human=True
-    )
-
-    try:
-        result = llm.invoke(
-            [SystemMessage(content=reasoning_prompt.format(current_iteration=state.research_loop_count + 1)),
-             HumanMessage(content=human_message)]
+        # 현재 상태를 Mind Map에 자동 기록
+        mind_map.auto_update(state, "reasoning_preparation")
+        
+        # 웹 연구 결과 포맷
+        formatted_sources = deduplicate_and_format_sources(
+            state.web_research_results, 
+            max_tokens_per_source=5000
         )
-
-        # LLM 응답 로깅
+        
+        # 이전 추론 결과가 있으면 포함
+        current_summary = ""
+        if state.running_summary:
+            if isinstance(state.running_summary, list):
+                current_summary = "\n".join(state.running_summary) 
+            else:
+                current_summary = state.running_summary
+        
+        # Mind Map에서 관련 컨텍스트 검색
+        mind_map_context = ""
+        if current_summary:
+            search_query = f"이 연구에서 이미 발견한 중요한 사실은 무엇인가요? 주제: {state.research_topic}"
+            mind_map_context = mind_map.retrieve_context(search_query, state.research_topic)
+        
+        # 추론용 프롬프트 구성 (Mind Map 컨텍스트 포함)
+        reasoner_instructions_with_context = reasoner_instructions.format(
+            research_topic=state.research_topic,
+            mind_map_context=mind_map_context if mind_map_context else "마인드맵에 아직 충분한 정보가 없습니다."
+        )
+        
+        # LLM 설정
+        llm = ChatGoogleGenerativeAI(
+            model="gemini-2.0-flash-exp",
+            temperature=0.2,
+            convert_system_message_to_human=True
+        )
+        
         save_research_process(
             state,
-            "Raw LLM Response (Reasoning)",
-            f"System Prompt:\n{reasoning_prompt.format(current_iteration=state.research_loop_count + 1)}\n\n"
-            f"Human Message:\n{human_message}\n\n"
-            f"Raw Response:\n{result.content}"
+            "Reasoning Step",
+            f"Research Topic: {state.research_topic}\n"
+            f"Current Summary: {current_summary}\n"
+            f"Search Query: {state.search_query}\n"
+            f"Mind Map Context: {mind_map_context}"
         )
-
-        # Mind Map 업데이트 (쿼리 토큰 처리 전에 수행)
-        if mind_map: # mind_map 객체가 None이 아닐때만(Neo4j 연결이 정상일 때)
-            try:
-                mind_map.add_reasoning_step(state.research_topic, result.content) # type 인자 제거
-                save_research_process(state, "Mind Map Update", f"Updated with reasoning content:\n{result.content}")
-            except Exception as e:
-                print(f"Mind Map 업데이트 중 오류 발생: {e}")
-                save_research_process(state, "Mind Map Update Error", str(e))
-
-        # Mind Map 쿼리 토큰 처리
+        
+        # LLM으로 추론 수행
+        result = llm.invoke([
+            SystemMessage(content=reasoner_instructions_with_context),
+            HumanMessage(content=f"""
+            연구 주제: {state.research_topic}
+            
+            이전 분석:
+            {current_summary}
+            
+            웹 검색 결과:
+            {formatted_sources}
+            
+            마인드맵 컨텍스트:
+            {mind_map_context}
+            """)
+        ])
+        
+        # Mind Map 토큰 감지
         if "[MIND_MAP_QUERY]" in result.content:
-            return SummaryState(
-                research_topic=state.research_topic,
-                running_summary=result.content,  # 토큰 포함 전체 내용
-                needs_external_info=True,
-                research_loop_count=state.research_loop_count, # 카운트 증가 안함
-                web_research_results=state.web_research_results,
-                search_query=state.search_query,
-
-            )
+            query_text = re.search(r'\[MIND_MAP_QUERY\](.*?)\[/MIND_MAP_QUERY\]', result.content, re.DOTALL)
+            if query_text:
+                query = query_text.group(1).strip()
+                # Mind Map에 직접 질의
+                map_result = mind_map.retrieve_context(query, state.research_topic)
+                
+                # 결과를 응답에 통합
+                modified_content = result.content.replace(
+                    f"[MIND_MAP_QUERY]{query}[/MIND_MAP_QUERY]",
+                    f"[MIND_MAP_RESULT]\n{map_result}\n[/MIND_MAP_RESULT]"
+                )
+                
+                # 수정된 내용으로 다시 추론
+                return SummaryState(
+                    research_topic=state.research_topic,
+                    search_query=state.search_query,
+                    running_summary=modified_content,
+                    needs_external_info=True,  # 다시 추론
+                    research_loop_count=state.research_loop_count,
+                    web_research_results=state.web_research_results
+                )
         # 웹 검색 토큰 처리
         elif "<SEARCH>" in result.content and "</SEARCH>" in result.content:
             start = result.content.find("<SEARCH>") + len("<SEARCH>")
