@@ -64,17 +64,7 @@ class MindMapAgent:
             "CREATE CONSTRAINT IF NOT EXISTS FOR (r:ReasoningStep) REQUIRE r.id IS UNIQUE",
             "CREATE CONSTRAINT IF NOT EXISTS FOR (c:Concept) REQUIRE c.id IS UNIQUE",
             "CREATE CONSTRAINT IF NOT EXISTS FOR (e:Evidence) REQUIRE e.id IS UNIQUE",
-            "CREATE CONSTRAINT IF NOT EXISTS FOR (t:Topic) REQUIRE t.id IS UNIQUE",
-            
-            # 그래프 알고리즘을 위한 그래프 프로젝션 생성
-            """
-            CALL gds.graph.project.cypher(
-                'reasoning-graph',
-                'MATCH (n) RETURN id(n) AS id',
-                'MATCH (a)-[r]->(b) RETURN id(a) AS source, id(b) AS target, type(r) AS type',
-                {validateRelationships: false}
-            )
-            """
+            "CREATE CONSTRAINT IF NOT EXISTS FOR (t:Topic) REQUIRE t.id IS UNIQUE"
         ]
         
         for query in constraints:
@@ -82,6 +72,8 @@ class MindMapAgent:
                 self.graph.query(query)
             except Exception as e:
                 print(f"스키마 초기화 오류 (무시 가능): {e}")
+        
+        # 그래프 프로젝션은 노드가 있을 때만 생성 가능하므로 initialize_for_topic에서 처리
     
     def auto_update(self, state: Any, step_name: str) -> None:
         """모든 상태 변화를 자동으로 Mind Map에 업데이트"""

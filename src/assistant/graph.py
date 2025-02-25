@@ -686,10 +686,38 @@ def format_final_report(state: SummaryState) -> SummaryState:
 # Add nodes and edges 
 builder = StateGraph(SummaryState, input=SummaryStateInput, output=SummaryStateOutput)
 
-def initialize_research(state_input: SummaryStateInput) -> SummaryState:
-    """사용자 입력으로 초기 상태 생성"""
+def initialize_research(state_input: SummaryStateInput, config: RunnableConfig) -> SummaryState:
+    """사용자 입력으로 초기 상태 생성 및 Mind Map 초기화"""
     clear_session_files()
-
+    
+    # Configuration에서 Neo4j 설정 가져오기
+    configurable = Configuration.from_runnable_config(config)
+    
+    # Mind Map 에이전트 초기화 및 주제별 초기화
+    try:
+        mind_map = MindMapAgent(
+            url=configurable.neo4j_uri,
+            username=configurable.neo4j_username,
+            password=configurable.neo4j_password
+        )
+        
+        # 새 연구 주제에 대한 Mind Map 초기화
+        mind_map.initialize_for_topic(state_input.research_topic)
+        
+        # 초기 Mind Map 생성 기록
+        save_research_process(
+            SummaryState(research_topic=state_input.research_topic),
+            "Mind Map Initialization",
+            f"새 연구 주제에 대한 Mind Map 초기화: {state_input.research_topic}"
+        )
+    except Exception as e:
+        print(f"Mind Map 초기화 중 오류: {e}")
+        save_research_process(
+            SummaryState(research_topic=state_input.research_topic),
+            "Mind Map Initialization Error",
+            f"오류: {str(e)}"
+        )
+    
     return SummaryState(
         research_topic=state_input.research_topic,
         web_research_results=[],
