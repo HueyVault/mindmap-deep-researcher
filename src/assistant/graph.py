@@ -383,7 +383,8 @@ def bullet_points(items):
     """리스트 항목을 글머리 기호 형식으로 변환"""
     return "\n".join(f"- {item}" for item in items)
     
-def route_research(state: SummaryState) -> Literal["web_research", "review_summary", "finalize_summary"]:
+def route_research(state: SummaryState, config: RunnableConfig) -> Literal["web_research", "review_summary", "finalize_summary"]:
+
     """웹 검색 진행 중 다음 단계를 결정
     
     research_loop_count:
@@ -392,20 +393,28 @@ def route_research(state: SummaryState) -> Literal["web_research", "review_summa
     4-5회: 계속 검색
     6회 이상: 종료
     """
-    if state.research_loop_count >= 6:  # 6회 이상이면 종료
+    # Configuration에서 설정 가져오기
+    configurable = Configuration.from_runnable_config(config)
+    max_loops = configurable.max_web_research_loops
+    
+    if state.research_loop_count >= max_loops:  # 최대 횟수 이상이면 종료
         return "finalize_summary"
     # elif state.research_loop_count == 3:  # 3회차에 리뷰
     #     return "review_summary"
     return "web_research"
 
-def route_after_review(state: SummaryState) -> Literal["web_research", "finalize_summary"]:
+def route_after_review(state: SummaryState, config: RunnableConfig) -> Literal["web_research", "finalize_summary"]:
     """리뷰 후 다음 단계를 결정
     
     research_loop_count:
     3회 리뷰 후: 다시 검색으로
     6회 이상: 종료
     """
-    if state.research_loop_count >= 6:  # 6회 이상이면 종료
+    # Configuration에서 설정 가져오기
+    configurable = Configuration.from_runnable_config(config)
+    max_loops = configurable.max_web_research_loops
+    
+    if state.research_loop_count >= max_loops:  # 최대 횟수 이상이면 종료
         return "finalize_summary"
     return "web_research"  # 그 외에는 다시 검색
     
@@ -490,6 +499,7 @@ def reason_from_sources(state: SummaryState, config: RunnableConfig):
     try:
         # Configuration에서 Neo4j 설정 가져오기
         configurable = Configuration.from_runnable_config(config)
+        max_loops = configurable.max_web_research_loops
         
         # Mind Map 에이전트 초기화
         mind_map = MindMapAgent(
@@ -524,10 +534,10 @@ def reason_from_sources(state: SummaryState, config: RunnableConfig):
         # 추론용 프롬프트 수정 - 원래 버전의 중요 기능 복원
         modified_reasoner_instructions = """당신은 주어진 주제에 대해 심층적인 분석과 추론을 수행하는 전문 연구원입니다.
         
-현재 진행 상황: {current_iteration}/6회차
+현재 진행 상황: {current_iteration}/{max_loops}회차
 
 [중요 제한사항]
-- 웹 검색은 전체 연구 과정에서 최대 6회만 허용됩니다
+- 웹 검색은 전체 연구 과정에서 최대 {max_loops}회만 허용됩니다
 - 각 검색은 신중하게 선택되어야 하며, 연구의 핵심 질문을 해결하는데 집중해야 합니다
 - 불필요한 검색은 제한된 기회를 낭비하게 됩니다
 - 마지막 회차에서는 반드시 결론을 도출해야 합니다
@@ -587,12 +597,13 @@ def reason_from_sources(state: SummaryState, config: RunnableConfig):
             f"Mind Map Context: {mind_map_context}"
         )
         
-        # LLM으로 추론 수행 (프롬프트 수정)
+        # LLM으로 추론 수행 (프롬프트 수정 - 최대 검색 횟수 동적 적용)
         result = llm.invoke([
             SystemMessage(content=modified_reasoner_instructions.format(
                 research_topic=state.research_topic,
                 mind_map_context=mind_map_context if mind_map_context else "마인드맵에 아직 충분한 정보가 없습니다.",
-                current_iteration=state.research_loop_count + 1
+                current_iteration=state.research_loop_count + 1,
+                max_loops=max_loops
             )),
             HumanMessage(content=f"""
             <연구 주제>
@@ -608,7 +619,7 @@ def reason_from_sources(state: SummaryState, config: RunnableConfig):
             </기존 분석>
             
             <남은 검색 횟수>
-            {6 - (state.research_loop_count or 0)}회
+            {max_loops - (state.research_loop_count or 0)}회
             </남은 검색 횟수>
             
             응답 지침:
@@ -737,12 +748,6 @@ def format_final_report(state: SummaryState) -> SummaryState:
         search_query=state.search_query
     )
 
-
-
-
-# Add nodes and edges 
-builder = StateGraph(SummaryState, input=SummaryStateInput, output=SummaryStateOutput)
-
 def initialize_research(state_input: SummaryStateInput, config: RunnableConfig) -> SummaryState:
     """사용자 입력으로 초기 상태 생성 및 Mind Map 초기화"""
     clear_session_files()
@@ -783,28 +788,42 @@ def initialize_research(state_input: SummaryStateInput, config: RunnableConfig) 
         search_query=state_input.research_topic  # 초기 검색어는 연구 주제로 설정
     )
 
-# 나머지 노드와 엣지 구성은 동일
+
+# Add nodes and edges 
+builder = StateGraph(SummaryState, input=SummaryStateInput, output=SummaryStateOutput)
+
+# 노드 추가
 builder.add_node("initialize", initialize_research)
 builder.add_node("reason_from_sources", reason_from_sources)
 builder.add_node("web_research", web_research)
-builder.add_node("generate_final_report", format_final_report)
-# builder.add_node("update_mind_map", update_mind_map) # 이 노드는 이제 사용하지 않음
+builder.add_node("review_summary", review_summary)
+builder.add_node("finalize_summary", format_final_report)
 
-# Add edges
+# 엣지 추가
 builder.add_edge(START, "initialize")
-builder.add_edge("initialize", "reason_from_sources")
+builder.add_edge("initialize", "web_research")
 builder.add_edge("web_research", "reason_from_sources")
-# builder.add_edge("update_mind_map", "reason_from_sources") # 이 엣지는 이제 사용하지 않음
 
+# 동적 분기 처리
 builder.add_conditional_edges(
     "reason_from_sources",
-    lambda x: "web_research" if x.needs_external_info else "generate_final_report",
+    route_research,  # 이 함수가 config를 받아야 함
     {
         "web_research": "web_research",
-        "generate_final_report": "generate_final_report"
+        "review_summary": "review_summary",
+        "finalize_summary": "finalize_summary"
     }
 )
 
-builder.add_edge("generate_final_report", END)
+builder.add_conditional_edges(
+    "review_summary",
+    route_after_review,  # 이 함수가 config를 받아야 함
+    {
+        "web_research": "web_research",
+        "finalize_summary": "finalize_summary"
+    }
+)
+
+builder.add_edge("finalize_summary", END)
 
 graph = builder.compile()
