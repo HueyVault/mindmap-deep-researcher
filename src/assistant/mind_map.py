@@ -30,7 +30,14 @@ class MindMapAgent:
         # 1. 기존에 같은 주제의 노드가 있다면 모두 삭제
         topic_id = re.sub(r'\W+', '_', research_topic.lower())
         
-        # 2. 연구 주제 노드 생성
+        try:
+            # 먼저 기존 그래프 프로젝션 삭제
+            self.graph.query("CALL gds.graph.drop('reasoning-graph', false) YIELD graphName")
+        except Exception as e:
+            # 첫 실행 시에는 그래프가 없을 수 있으므로 무시
+            print(f"그래프 프로젝션 삭제 중 오류 (무시 가능): {e}")
+        
+        # 연구 주제 노드 생성
         self.graph.query(
             """
             MERGE (t:Topic {id: $topic_id})
@@ -42,6 +49,8 @@ class MindMapAgent:
                 "topic": research_topic
             }
         )
+        
+        print(f"새 연구 주제에 대한 Mind Map 초기화 완료: {research_topic}")
         
         # 3. 그래프 프로젝션 준비 (최소 1개의 노드가 필요)
         # 위에서 생성한 Topic 노드가 있으므로 이제 프로젝션 시도 가능
