@@ -5,6 +5,7 @@ import re
 from langchain_community.graphs import Neo4jGraph
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.messages import SystemMessage, HumanMessage
+import os
 
 class MindMapAgent:
     """연구 과정의 추론 맥락을 저장하고 구조화하는 Mind Map 에이전트"""
@@ -23,16 +24,46 @@ class MindMapAgent:
         
     def initialize_for_topic(self, research_topic: str):
         """새로운 연구 주제에 대한 Mind Map 완전 초기화"""
+        # 기존 데이터 백업
+        try:
+            # 타임스탬프 생성
+            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+            backup_id = re.sub(r'\W+', '_', research_topic.lower())
+            backup_filename = f"mind_map_backup_{backup_id}_{timestamp}.json"
+            
+            # 백업 디렉토리 확인/생성
+            backup_dir = "mind_map_backups"
+            os.makedirs(backup_dir, exist_ok=True)
+            backup_path = os.path.join(backup_dir, backup_filename)
+            
+            # 현재 데이터 백업
+            nodes = self.graph.query("MATCH (n) RETURN n")
+            relationships = self.graph.query("MATCH ()-[r]->() RETURN r")
+            
+            backup_data = {
+                "timestamp": timestamp,
+                "research_topic": research_topic,
+                "nodes": nodes,
+                "relationships": relationships
+            }
+            
+            with open(backup_path, 'w', encoding='utf-8') as f:
+                json.dump(backup_data, f, ensure_ascii=False, indent=2, default=str)
+            
+            print(f"Mind Map 백업 완료: {backup_path}")
+        except Exception as e:
+            print(f"Mind Map 백업 중 오류: {e}")
+        
         # 기존 데이터 전체 삭제 (완전 초기화)
         try:
             # 먼저 기존 그래프 프로젝션 삭제
-            self.graph.query("CALL gds.graph.drop('reasoning-graph', false) YIELD graphName")
-        except Exception as e:
-            # 첫 실행 시에는 그래프가 없을 수 있으므로 무시
-            print(f"그래프 프로젝션 삭제 중 오류 (무시 가능): {e}")
-        
-        # 기존 데이터 전체 삭제
-        try:
+            try:
+                self.graph.query("CALL gds.graph.drop('reasoning-graph', false) YIELD graphName")
+            except Exception as e:
+                # GDS 라이브러리가 없거나 프로젝션이 없을 수 있으므로 무시
+                print(f"그래프 프로젝션 삭제 중 오류 (무시 가능): {e}")
+            
+            # 기존 데이터 전체 삭제
             self.graph.query("MATCH (n) DETACH DELETE n")
             print("기존 Mind Map 데이터 모두 삭제됨")
         except Exception as e:
@@ -40,11 +71,15 @@ class MindMapAgent:
         
         # 연구 주제 노드 생성
         topic_id = re.sub(r'\W+', '_', research_topic.lower())
+        
+        # MERGE 사용하여 중복 생성 방지 (CREATE 대신)
         self.graph.query(
             """
-            CREATE (t:Topic {id: $topic_id})
-            SET t.name = $topic,
-                t.timestamp = datetime()
+            MERGE (t:Topic {id: $topic_id})
+            ON CREATE SET t.name = $topic,
+                        t.timestamp = datetime()
+            ON MATCH SET t.name = $topic,
+                    t.timestamp = datetime()
             """,
             {
                 "topic_id": topic_id,
@@ -53,7 +88,6 @@ class MindMapAgent:
         )
         
         print(f"새 연구 주제에 대한 Mind Map 초기화 완료: {research_topic}")
-        # 그래프 프로젝션은 실제 관계가 생성된 후에 필요한 때 생성하도록 제거
 
     def _create_schema(self):
         """Neo4j 스키마 초기화 및 제약조건 생성"""
