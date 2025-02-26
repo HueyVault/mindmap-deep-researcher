@@ -670,7 +670,7 @@ def reason_from_sources(state: SummaryState, config: RunnableConfig):
                 research_loop_count=state.research_loop_count + 1, # 카운트 증가
                 web_research_results=state.web_research_results,
                 search_query=state.search_query,
-                query_type=None # ""  # 쿼리 타입 초기화
+                query_type="finalize_summary" # ""  # 쿼리 타입 초기화
             )
 
     except Exception as e:
@@ -684,7 +684,7 @@ def reason_from_sources(state: SummaryState, config: RunnableConfig):
             research_loop_count=state.research_loop_count + 1,
             web_research_results=state.web_research_results,
             search_query=state.search_query,
-            query_type=None # ""  # 쿼리 타입 초기화
+            query_type="finalize_summary" # ""  # 쿼리 타입 초기화
         )
     
 
@@ -736,7 +736,7 @@ def query_mind_map(state: SummaryState, config: RunnableConfig) -> SummaryState:
             needs_external_info=True,  # 다시 추론으로 돌아감
             research_loop_count=state.research_loop_count,  # 카운트 유지
             web_research_results=state.web_research_results,
-            query_type=None # ""  # 쿼리 타입 초기화
+            query_type="" # ""  # 쿼리 타입 초기화
         )
         
     except Exception as e:
@@ -907,28 +907,47 @@ builder = StateGraph(SummaryState, input=SummaryStateInput, output=SummaryStateO
 
 ## action test code
 # 노드 추가
+# 노드 추가
 builder.add_node("initialize", initialize_research)
 builder.add_node("reason_from_sources", reason_from_sources)
 builder.add_node("web_research", web_research)
 builder.add_node("query_mind_map", query_mind_map)
 builder.add_node("finalize_summary", format_final_report)
 
-# 엣지 추가
+# 기본 흐름 엣지
+# builder.set_entry_point("initialize")  # START -> initialize 대신 이 방식 사용
 builder.add_edge(START, "initialize")
 builder.add_edge("initialize", "reason_from_sources")
 builder.add_edge("web_research", "reason_from_sources")
 builder.add_edge("query_mind_map", "reason_from_sources")
 
-# 동적 분기 처리
+# 동적 분기 처리 - 명확한 조건으로 수정
 builder.add_conditional_edges(
     "reason_from_sources",
-    lambda state: {
-        "mind_map": "query_mind_map",
-        "web_search": "web_research",
-        None : "finalize_summary" if not state.needs_external_info else "reason_from_sources"
-    }.get(state.query_type, "finalize_summary" if not state.needs_external_info else "reason_from_sources")
+    lambda state: 
+        "query_mind_map" if state.query_type == "mind_map" else
+        "web_research" if state.query_type == "web_search" else
+        "finalize_summary" if not state.needs_external_info else
+        "reason_from_sources" ,
+        {
+            "query_mind_map" : "query_mind_map",
+            "web_research" : "web_research",
+            "finalize_summary" : "finalize_summary" ,
+            "reason_from_sources" : "reason_from_sources"
+        }
 )
 
+# # 동적 분기 처리
+# builder.add_conditional_edges(
+#     "reason_from_sources",
+#     lambda x: "web_research" if x.needs_external_info else "finalize_summary",
+#     {
+#         "web_research": "web_research",
+#         "finalize_summary": "finalize_summary"
+#     }
+# )
+
+# 최종 노드
 builder.add_edge("finalize_summary", END)
 
 graph = builder.compile()
