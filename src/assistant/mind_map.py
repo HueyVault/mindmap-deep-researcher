@@ -322,6 +322,14 @@ class MindMapAgent:
     
     def retrieve_context(self, query: str, research_topic: str) -> str:
         """추론에 필요한 관련 컨텍스트 검색"""
+        # 로깅을 위한 정보 저장
+        query_info = {
+            "timestamp": datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+            "query_type": "retrieve_context",
+            "query": query,
+            "research_topic": research_topic
+        }
+        
         # 1. 질의 의도 분석
         intent_prompt = f"""다음 질문의 의도를 분석해주세요:
         {query}
@@ -340,47 +348,135 @@ class MindMapAgent:
         # 2. 목적에 맞는 Cypher 쿼리 생성
         cypher_prompt = f"""Neo4j 그래프 데이터베이스에 대한 Cypher 쿼리를 생성해주세요.
 
-스키마:
-- (Topic) - 연구 주제
-- (ReasoningStep) - 추론 단계
-- (Concept) - 개념 
-- (Evidence) - 증거
+    스키마:
+    - (Topic) - 연구 주제 (id, name)
+    - (ReasoningStep) - 추론 단계 (id, content, timestamp)
+    - (Concept) - 개념 (id, name, description)
+    - (Evidence) - 증거 (id, content, source)
 
-관계:
-- (Topic)-[HAS_STEP]->(ReasoningStep)
-- (Topic)-[HAS_EVIDENCE]->(Evidence)
-- (ReasoningStep)-[MENTIONS]->(Concept)
-- (ReasoningStep)-[LEADS_TO]->(ReasoningStep)
-- (Concept)-[RELATES_TO]->(Concept) 또는 더 구체적인 관계 유형
+    관계:
+    - (Topic)-[HAS_STEP]->(ReasoningStep)
+    - (Topic)-[HAS_EVIDENCE]->(Evidence)
+    - (ReasoningStep)-[MENTIONS]->(Concept)
+    - (ReasoningStep)-[LEADS_TO]->(ReasoningStep)
+    - (Concept)-[RELATES_TO]->(Concept) 또는 더 구체적인 관계 유형
 
-질문: {query}
-연구 주제: {research_topic}
-분석된 의도: {json.dumps(intent)}
+    질문: {query}
+    연구 주제: {research_topic}
+    분석된 의도: {json.dumps(intent)}
 
-Cypher 쿼리만 반환해주세요.
-"""
+    중요: 먼저 Topic 노드를 찾고, 그와 연결된 데이터를 조회하는 쿼리를 작성하세요.
+    연구 주제는 Topic 노드의 name 속성으로 저장되어 있습니다.
+
+    Cypher 쿼리만 반환해주세요.
+    """
 
         cypher_result = self.llm.invoke([HumanMessage(content=cypher_prompt)])
         cypher_query = self._extract_cypher_query(cypher_result.content)
         
+        # 쿼리 로깅
+        query_info["cypher_query"] = cypher_query
+        
         # 3. 쿼리 실행 및 결과 통합
         try:
             results = self.graph.query(cypher_query)
+            query_info["query_results"] = str(results)
+            
             if not results:
-                return "관련 정보를 찾을 수 없습니다."
+                # 결과가 없을 경우 폴백 쿼리 시도
+                fallback_query = f"""
+                MATCH (t:Topic) WHERE t.name CONTAINS "{research_topic}"
+                OPTIONAL MATCH (t)-[:HAS_STEP]->(s:ReasoningStep)
+                OPTIONAL MATCH (s)-[:MENTIONS]->(c:Concept)
+                RETURN t.name AS Topic, collect(DISTINCT s.content) AS ReasoningSteps, 
+                    collect(DISTINCT c.name) AS Concepts LIMIT 5
+                """
+                results = self.graph.query(fallback_query)
+                query_info["fallback_query"] = fallback_query
+                query_info["fallback_results"] = str(results)
+                
+                if not results:
+                    # 로깅
+                    from src.assistant.graph import save_research_process, SummaryState
+                    
+                    # 임시 state 객체 생성
+                    temp_state = SummaryState(
+                        research_topic=research_topic,
+                        running_summary="",
+                        needs_external_info=False,
+                        research_loop_count=0,
+                        web_research_results=[],
+                        search_query=""
+                    )
+                    
+                    save_research_process(
+                        temp_state,  # 딕셔너리 대신 SummaryState 객체 전달
+                        "Mind Map Query",
+                        f"쿼리: {query}\nCypher: {cypher_query}\n결과: 정보 없음"
+                    )
+                    return "관련 정보를 찾을 수 없습니다."
             
             # 4. 결과 요약 및 형식화
             summary_prompt = f"""다음 그래프 쿼리 결과를 요약해주세요:
             {results}
             
             원래 질문: {query}
+            연구 주제: {research_topic}
+            
+            결과를 명확하게 설명하고, 발견된 관계와 정보를 강조해주세요.
             """
             
             summary_result = self.llm.invoke([HumanMessage(content=summary_prompt)])
-            return summary_result.content
+            response = summary_result.content
+            
+            # 로깅
+            query_info["response"] = response
+
+            from src.assistant.graph import save_research_process
+            # SummaryState 객체 대신 클래스 생성 없이 처리할 수 있도록 함수 가져오기
+            from src.assistant.graph import SummaryState
+            
+            # 임시 state 객체 생성
+            temp_state = SummaryState(
+                research_topic=research_topic,
+                running_summary="",
+                needs_external_info=False,
+                research_loop_count=0,
+                web_research_results=[],
+                search_query=""
+            )
+            
+            save_research_process(
+                temp_state,  # 딕셔너리 대신 SummaryState 객체 전달
+                "Mind Map Query",
+                f"쿼리: {query}\nCypher: {cypher_query}\n결과: {str(results)[:500]}...\n응답: {response}"
+            )
+            
+            return response
         except Exception as e:
-            print(f"컨텍스트 검색 중 오류: {e}")
-            return f"오류가 발생했습니다: {str(e)}"
+            error_msg = f"컨텍스트 검색 중 오류: {e}"
+            print(error_msg)
+            
+            # 오류 로깅 코드 수정
+            from src.assistant.graph import save_research_process, SummaryState
+            
+            # 임시 state 객체 생성
+            temp_state = SummaryState(
+                research_topic=research_topic,
+                running_summary="",
+                needs_external_info=False,
+                research_loop_count=0,
+                web_research_results=[],
+                search_query=""
+            )
+            
+            save_research_process(
+                temp_state,  # 딕셔너리 대신 SummaryState 객체 전달
+                "Mind Map Query Error",
+                f"쿼리: {query}\nCypher: {cypher_query}\n오류: {str(e)}"
+            )
+            
+            return f"마인드맵 쿼리 중 오류가 발생했습니다: {str(e)}"
 
     def cluster_and_summarize(self) -> List[Dict]:
         """추론 컨텍스트를 클러스터링하고 요약"""

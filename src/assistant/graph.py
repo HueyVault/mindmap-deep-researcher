@@ -636,6 +636,13 @@ def reason_from_sources(state: SummaryState, config: RunnableConfig):
                 # Mind Map에 직접 질의
                 map_result = mind_map.retrieve_context(query, state.research_topic)
                 
+                # 쿼리와 결과 로깅
+                save_research_process(
+                    state,
+                    "Mind Map Query",
+                    f"쿼리: {query}\n결과: {map_result}"
+                )
+                
                 # 결과를 응답에 통합
                 modified_content = result.content.replace(
                     f"[MIND_MAP_QUERY]{query}[/MIND_MAP_QUERY]",
@@ -792,36 +799,36 @@ def initialize_research(state_input: SummaryStateInput, config: RunnableConfig) 
 # Add nodes and edges 
 builder = StateGraph(SummaryState, input=SummaryStateInput, output=SummaryStateOutput)
 
-# dump save test code
-# 노드 추가
-builder.add_node("initialize", initialize_research)
-
-# 엣지 추가
-builder.add_edge(START, "initialize")
-builder.add_edge("initialize", END)
-
-# ## action test code
+# # dump save test code
 # # 노드 추가
 # builder.add_node("initialize", initialize_research)
-# builder.add_node("reason_from_sources", reason_from_sources)
-# builder.add_node("web_research", web_research)
-# builder.add_node("finalize_summary", format_final_report)
 
 # # 엣지 추가
 # builder.add_edge(START, "initialize")
-# builder.add_edge("initialize", "reason_from_sources")
-# builder.add_edge("web_research", "reason_from_sources")
+# builder.add_edge("initialize", END)
 
-# # 동적 분기 처리
-# builder.add_conditional_edges(
-#     "reason_from_sources",
-#     lambda x: "web_research" if x.needs_external_info else "finalize_summary",
-#     {
-#         "web_research": "web_research",
-#         "finalize_summary": "finalize_summary"
-#     }
-# )
+## action test code
+# 노드 추가
+builder.add_node("initialize", initialize_research)
+builder.add_node("reason_from_sources", reason_from_sources)
+builder.add_node("web_research", web_research)
+builder.add_node("finalize_summary", format_final_report)
 
-# builder.add_edge("finalize_summary", END)
+# 엣지 추가
+builder.add_edge(START, "initialize")
+builder.add_edge("initialize", "reason_from_sources")
+builder.add_edge("web_research", "reason_from_sources")
+
+# 동적 분기 처리
+builder.add_conditional_edges(
+    "reason_from_sources",
+    lambda x: "web_research" if x.needs_external_info else "finalize_summary",
+    {
+        "web_research": "web_research",
+        "finalize_summary": "finalize_summary"
+    }
+)
+
+builder.add_edge("finalize_summary", END)
 
 graph = builder.compile()
