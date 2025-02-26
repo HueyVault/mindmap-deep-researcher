@@ -494,6 +494,7 @@ def update_mind_map(state: SummaryState, config: RunnableConfig) -> SummaryState
         )
         return state  # 오류 발생 시 원래 상태 반환
 
+
 def reason_from_sources(state: SummaryState, config: RunnableConfig):
     """소스로부터 추론 및 다음 단계 결정"""
     try:
@@ -531,7 +532,7 @@ def reason_from_sources(state: SummaryState, config: RunnableConfig):
             search_query = f"이 연구에서 이미 발견한 중요한 사실은 무엇인가요? 주제: {state.research_topic}"
             mind_map_context = mind_map.retrieve_context(search_query, state.research_topic)
         
-        # 추론용 프롬프트 수정 - 원래 버전의 중요 기능 복원
+        # 추론용 프롬프트 수정 - 토큰 형식 통일
         modified_reasoner_instructions = """당신은 주어진 주제에 대해 심층적인 분석과 추론을 수행하는 전문 연구원입니다.
         
 현재 진행 상황: {current_iteration}/{max_loops}회차
@@ -564,7 +565,7 @@ def reason_from_sources(state: SummaryState, config: RunnableConfig):
    - 새로운 정보가 반드시 필요한 경우에만 사용
 
 추론에 대한 방향을 다시 설정하거나 정보 수집을 위한 방법:
-1. [MIND_MAP_QUERY]질의[/MIND_MAP_QUERY] : 마인드맵 질의 요청
+1. <MIND_MAP_QUERY>질의</MIND_MAP_QUERY> : 마인드맵 질의 요청
    - 이전 분석 내용을 참조할 때 사용
    - 검색 횟수를 소비하지 않음
    - 예시 질의:
@@ -578,7 +579,7 @@ def reason_from_sources(state: SummaryState, config: RunnableConfig):
 <연구 주제>
 {research_topic}
 
-주제에 대한 철저한 분석을 텍스트 형식으로 제공하세요. 필요시 <SEARCH> 태그나 [MIND_MAP_QUERY] 태그를 사용하여 추가 정보를 요청할 수 있습니다. JSON 형식이 아닌 일반 텍스트로 응답해주세요.
+주제에 대한 철저한 분석을 텍스트 형식으로 제공하세요. 필요시 <SEARCH> 태그나 <MIND_MAP_QUERY> 태그를 사용하여 추가 정보를 요청할 수 있습니다. JSON 형식이 아닌 일반 텍스트로 응답해주세요.
 """
         
         # LLM 설정
@@ -624,40 +625,27 @@ def reason_from_sources(state: SummaryState, config: RunnableConfig):
             
             응답 지침:
             위의 지침을 따르고, 자유 형식의 텍스트로 추론 결과를 작성합니다.
-            필요시 <SEARCH> 태그나 [MIND_MAP_QUERY] 태그를 사용하세요.
+            필요시 <SEARCH> 태그나 <MIND_MAP_QUERY> 태그를 사용하세요.
             """)
         ])
         
-        # Mind Map 토큰 감지
-        if "[MIND_MAP_QUERY]" in result.content:
-            query_text = re.search(r'\[MIND_MAP_QUERY\](.*?)\[/MIND_MAP_QUERY\]', result.content, re.DOTALL)
+        # Mind Map 토큰 감지 - 토큰 형식 통일
+        if "<MIND_MAP_QUERY>" in result.content:
+            query_text = re.search(r'<MIND_MAP_QUERY>(.*?)</MIND_MAP_QUERY>', result.content, re.DOTALL)
             if query_text:
                 query = query_text.group(1).strip()
-                # Mind Map에 직접 질의
-                map_result = mind_map.retrieve_context(query, state.research_topic)
                 
-                # 쿼리와 결과 로깅
-                save_research_process(
-                    state,
-                    "Mind Map Query",
-                    f"쿼리: {query}\n결과: {map_result}"
-                )
-                
-                # 결과를 응답에 통합
-                modified_content = result.content.replace(
-                    f"[MIND_MAP_QUERY]{query}[/MIND_MAP_QUERY]",
-                    f"[MIND_MAP_RESULT]\n{map_result}\n[/MIND_MAP_RESULT]"
-                )
-                
-                # 수정된 내용으로 다시 추론
+                # 마인드맵 쿼리 설정 (직접 처리하지 않고 외부 노드로 위임)
                 return SummaryState(
                     research_topic=state.research_topic,
-                    search_query=state.search_query,
-                    running_summary=modified_content,
-                    needs_external_info=True,  # 다시 추론
+                    search_query=query,
+                    running_summary=result.content,
+                    needs_external_info=True,
                     research_loop_count=state.research_loop_count,
-                    web_research_results=state.web_research_results
+                    web_research_results=state.web_research_results,
+                    query_type="mind_map"  # 마인드맵 쿼리 타입 설정
                 )
+                
         # 웹 검색 토큰 처리
         elif "<SEARCH>" in result.content and "</SEARCH>" in result.content:
             start = result.content.find("<SEARCH>") + len("<SEARCH>")
@@ -671,7 +659,8 @@ def reason_from_sources(state: SummaryState, config: RunnableConfig):
                 needs_external_info=True,
                 research_loop_count=state.research_loop_count + 1,  # 검색 횟수 증가
                 web_research_results=state.web_research_results,
-                search_query=search_query
+                search_query=search_query,
+                query_type="web_search"  # 웹 검색 타입 설정
             )
         else:  # 더 이상 외부 정보가 필요 없는 경우 (최종 결과)
             return SummaryState(
@@ -680,7 +669,8 @@ def reason_from_sources(state: SummaryState, config: RunnableConfig):
                 needs_external_info=False,
                 research_loop_count=state.research_loop_count + 1, # 카운트 증가
                 web_research_results=state.web_research_results,
-                search_query=state.search_query
+                search_query=state.search_query,
+                query_type=None # ""  # 쿼리 타입 초기화
             )
 
     except Exception as e:
@@ -693,7 +683,79 @@ def reason_from_sources(state: SummaryState, config: RunnableConfig):
             needs_external_info=False,
             research_loop_count=state.research_loop_count + 1,
             web_research_results=state.web_research_results,
-            search_query= state.search_query
+            search_query=state.search_query,
+            query_type=None # ""  # 쿼리 타입 초기화
+        )
+    
+
+def query_mind_map(state: SummaryState, config: RunnableConfig) -> SummaryState:
+    """마인드맵 쿼리 수행 함수"""
+    try:
+        # Configuration에서 Neo4j 설정 가져오기
+        configurable = Configuration.from_runnable_config(config)
+        
+        # Mind Map 에이전트 초기화
+        mind_map = MindMapAgent(
+            url=configurable.neo4j_uri,
+            username=configurable.neo4j_username,
+            password=configurable.neo4j_password
+        )
+
+        # 마인드맵 쿼리 수행
+        query = state.search_query
+        research_topic = state.research_topic
+        
+        # 로그 기록
+        save_research_process(
+            state,
+            "Mind Map Query",
+            f"마인드맵 쿼리: {query}"
+        )
+        
+        # 마인드맵 쿼리 실행
+        map_result = mind_map.retrieve_context(query, research_topic)
+        
+        # 쿼리 결과 로깅
+        save_research_process(
+            state,
+            "Mind Map Result",
+            f"쿼리: {query}\n결과: {map_result}"
+        )
+        
+        # 결과를 응답에 통합
+        modified_content = state.running_summary.replace(
+            f"<MIND_MAP_QUERY>{query}</MIND_MAP_QUERY>",
+            f"<MIND_MAP_RESULT>\n{map_result}\n</MIND_MAP_RESULT>"
+        )
+        
+        # 수정된 내용으로 다시 추론
+        return SummaryState(
+            research_topic=state.research_topic,
+            search_query="",  # 쿼리 초기화
+            running_summary=modified_content,
+            needs_external_info=True,  # 다시 추론으로 돌아감
+            research_loop_count=state.research_loop_count,  # 카운트 유지
+            web_research_results=state.web_research_results,
+            query_type=None # ""  # 쿼리 타입 초기화
+        )
+        
+    except Exception as e:
+        print(f"마인드맵 쿼리 중 오류 발생: {e}")
+        save_research_process(state, "Mind Map Query Error", str(e))
+        
+        # 오류 발생 시 에러 메시지 추가
+        error_content = state.running_summary.replace(
+            f"<MIND_MAP_QUERY>{state.search_query}</MIND_MAP_QUERY>",
+            f"<MIND_MAP_ERROR>마인드맵 쿼리 중 오류 발생: {str(e)}</MIND_MAP_ERROR>"
+        )
+        
+        return SummaryState(
+            research_topic=state.research_topic,
+            running_summary=error_content,
+            needs_external_info=True,  # 다시 추론
+            research_loop_count=state.research_loop_count,
+            web_research_results=state.web_research_results,
+            search_query=""
         )
 
 def format_final_report(state: SummaryState) -> SummaryState:
@@ -848,21 +910,23 @@ builder = StateGraph(SummaryState, input=SummaryStateInput, output=SummaryStateO
 builder.add_node("initialize", initialize_research)
 builder.add_node("reason_from_sources", reason_from_sources)
 builder.add_node("web_research", web_research)
+builder.add_node("query_mind_map", query_mind_map)
 builder.add_node("finalize_summary", format_final_report)
 
 # 엣지 추가
 builder.add_edge(START, "initialize")
 builder.add_edge("initialize", "reason_from_sources")
 builder.add_edge("web_research", "reason_from_sources")
+builder.add_edge("query_mind_map", "reason_from_sources")
 
 # 동적 분기 처리
 builder.add_conditional_edges(
     "reason_from_sources",
-    lambda x: "web_research" if x.needs_external_info else "finalize_summary",
-    {
-        "web_research": "web_research",
-        "finalize_summary": "finalize_summary"
-    }
+    lambda state: {
+        "mind_map": "query_mind_map",
+        "web_search": "web_research",
+        None : "finalize_summary" if not state.needs_external_info else "reason_from_sources"
+    }.get(state.query_type, "finalize_summary" if not state.needs_external_info else "reason_from_sources")
 )
 
 builder.add_edge("finalize_summary", END)

@@ -11,6 +11,7 @@ class SummaryState:
     needs_external_info: bool = field(default=False)
     search_query: str = field(default=None)
     research_loop_count: int = field(default=0)
+    query_type: str = field(default=None)  # 'web_search' 또는 'mind_map'
 
 @dataclass(kw_only=True)
 class SummaryStateInput:
