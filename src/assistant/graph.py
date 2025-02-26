@@ -1,5 +1,4 @@
 # graph.py
-import json
 from enum import Enum
 from typing_extensions import Literal
 
@@ -14,6 +13,8 @@ from assistant.mind_map import MindMapAgent
 
 import os
 import re
+import time
+import json
 
 # Core utilities
 from assistant.utils import (
@@ -40,7 +41,6 @@ from assistant.prompts import (
     review_instructions,
     reasoner_instructions
 )
-
 
 def web_research(state: SummaryState, config: RunnableConfig):
     """ Gather information from the web """
@@ -191,7 +191,7 @@ def update_mind_map(state: SummaryState, config: RunnableConfig) -> SummaryState
 
 
 def reason_from_sources(state: SummaryState, config: RunnableConfig):
-    """소스로부터 추론 및 다음 단계 결정"""
+    """소스로부터 추론 및 다음 단계 결정 - 반성(Reflection)과 계획(Planning) 포함"""
     try:
         # Configuration에서 Neo4j 설정 가져오기
         configurable = Configuration.from_runnable_config(config)
@@ -221,52 +221,64 @@ def reason_from_sources(state: SummaryState, config: RunnableConfig):
             else:
                 current_summary = state.running_summary
         
-        # Mind Map에서 관련 컨텍스트 검색
+        # Mind Map에서 관련 컨텍스트 검색 - 이전 반성과 계획도 포함
         mind_map_context = ""
+        reflection_context = ""
+        planning_context = ""
+        
         if current_summary:
-            search_query = f"이 연구에서 이미 발견한 중요한 사실은 무엇인가요? 주제: {state.research_topic}"
-            mind_map_context = mind_map.retrieve_context(search_query, state.research_topic)
+            # 일반적인 컨텍스트 검색
+            context_query = f"이 연구에서 이미 발견한 중요한 사실은 무엇인가요? 주제: {state.research_topic}"
+            mind_map_context = mind_map.retrieve_context(context_query, state.research_topic)
+            
+            # 이전 반성 검색
+            reflection_query = f"이 연구에서 진행된 이전 반성(reflection)들은 무엇인가요? 주제: {state.research_topic}"
+            reflection_context = mind_map.retrieve_context(reflection_query, state.research_topic)
+            
+            # 이전 계획 검색
+            planning_query = f"이 연구에서 수립된 이전 계획(planning)들은 무엇인가요? 주제: {state.research_topic}"
+            planning_context = mind_map.retrieve_context(planning_query, state.research_topic)
         
-        # 추론용 프롬프트 수정 - 토큰 형식 통일
-        modified_reasoner_instructions = """당신은 주어진 주제에 대해 심층적인 분석과 추론을 수행하는 전문 연구원입니다.
-        
+        # 추론용 프롬프트 - 반성과 계획 요소 추가
+        modified_reasoner_instructions = """당신은 높은 수준의 학술 연구를 수행하는 전문 연구원입니다. 
+당신의 목표는 주어진 주제에 대해 깊이 있고 체계적인 분석을 수행하는 것입니다.
+
 현재 진행 상황: {current_iteration}/{max_loops}회차
 
-[중요 제한사항]
-- 웹 검색은 전체 연구 과정에서 최대 {max_loops}회만 허용됩니다
-- 각 검색은 신중하게 선택되어야 하며, 연구의 핵심 질문을 해결하는데 집중해야 합니다
-- 불필요한 검색은 제한된 기회를 낭비하게 됩니다
-- 마지막 회차에서는 반드시 결론을 도출해야 합니다
+<연구 시스템>
+당신은 다음 세 단계의 프로세스를 통해 연구를 수행해야 합니다:
 
-<추론 프로세스>
-1. 정보 통합
-   - 여러 출처의 정보를 비교/대조
-   - 상충되는 관점 식별
-   - 핵심 트렌드와 패턴 파악
+1. 계획(PLANNING)
+   - 현재까지의 연구 상태 평가
+   - 핵심 질문과 연구 방향 설정
+   - 필요한 정보와 그 우선순위 결정
+   - 앞으로의 단계별 연구 접근 방식 수립
 
-2. 심층 분석
-   - 표면적 사실을 넘어선 근본 원인 탐구
-   - 다양한 관점에서의 영향 평가
-   - 잠재적 함의와 시사점 도출
+2. 실행(EXECUTION)
+   - 정보 통합: 여러 출처 비교/대조, 패턴 파악
+   - 심층 분석: 근본 원인과 영향 평가
+   - 비판적 사고: 주장 검증, 한계점 식별
 
-3. 비판적 사고
-   - 주장의 타당성 평가
-   - 한계점과 제약사항 식별
-   - 대안적 해석 제시
+3. 반성(REFLECTION)
+   - 현재 연구의 깊이와 범위 평가
+   - 핵심 가설의 검증 상태 확인
+   - 미해결 질문과 부족한 증거 식별
+   - 연구의 약점과 보완점 명확화
+
+<이전 계획 내용>
+{planning_context}
+
+<이전 반성 내용>
+{reflection_context}
 
 정보 수집을 위한 방법:
 1. <SEARCH>검색어</SEARCH> : 웹 검색 요청 (최대 400자)
    - 남은 검색 횟수를 고려하여 신중하게 사용
-   - 새로운 정보가 반드시 필요한 경우에만 사용
+   - 계획 단계에서 결정된 중요 질문에 대해서만 사용
 
-추론에 대한 방향을 다시 설정하거나 정보 수집을 위한 방법:
-1. <MIND_MAP_QUERY>질의</MIND_MAP_QUERY> : 마인드맵 질의 요청
-   - 이전 분석 내용을 참조할 때 사용
+2. <MIND_MAP_QUERY>질의</MIND_MAP_QUERY> : 마인드맵 질의 요청
+   - 이전 분석/계획/반성 내용을 참조할 때 사용
    - 검색 횟수를 소비하지 않음
-   - 예시 질의:
-     * "개념 X와 Y의 관계는?"
-     * "지금까지 발견된 주요 과제들은?"
-     * "이전 분석에서 언급된 기술적 세부사항은?"
 
 <마인드맵 컨텍스트>
 {mind_map_context}
@@ -274,7 +286,14 @@ def reason_from_sources(state: SummaryState, config: RunnableConfig):
 <연구 주제>
 {research_topic}
 
-주제에 대한 철저한 분석을 텍스트 형식으로 제공하세요. 필요시 <SEARCH> 태그나 <MIND_MAP_QUERY> 태그를 사용하여 추가 정보를 요청할 수 있습니다. JSON 형식이 아닌 일반 텍스트로 응답해주세요.
+주제에 대한 철저한 분석을 텍스트 형식으로 제공하세요. 반드시 각 회차마다 PLANNING, EXECUTION, REFLECTION 섹션을 모두 포함해야 합니다.
+
+- 처음에는 계획을 세우고
+- 그 계획에 따라 분석을 실행하고
+- 마지막에 반성을 통해 다음 단계를 준비하세요
+
+필요시 <SEARCH> 태그나 <MIND_MAP_QUERY> 태그를 사용하여 추가 정보를 요청할 수 있습니다. 
+JSON 형식이 아닌 일반 텍스트로 응답해주세요.
 """
         
         # LLM 설정
@@ -290,14 +309,20 @@ def reason_from_sources(state: SummaryState, config: RunnableConfig):
             f"Research Topic: {state.research_topic}\n"
             f"Current Summary: {current_summary}\n"
             f"Search Query: {state.search_query}\n"
-            f"Mind Map Context: {mind_map_context}"
+            f"Mind Map Context: {mind_map_context}\n"
+            f"Reflection Context: {reflection_context}\n"
+            f"Planning Context: {planning_context}"
         )
         
-        # LLM으로 추론 수행 (프롬프트 수정 - 최대 검색 횟수 동적 적용)
+        time.sleep(3)
+        
+        # LLM으로 추론 수행
         result = llm.invoke([
             SystemMessage(content=modified_reasoner_instructions.format(
                 research_topic=state.research_topic,
                 mind_map_context=mind_map_context if mind_map_context else "마인드맵에 아직 충분한 정보가 없습니다.",
+                reflection_context=reflection_context if reflection_context else "아직 반성 내용이 없습니다.",
+                planning_context=planning_context if planning_context else "아직 계획 내용이 없습니다.",
                 current_iteration=state.research_loop_count + 1,
                 max_loops=max_loops
             )),
@@ -319,18 +344,48 @@ def reason_from_sources(state: SummaryState, config: RunnableConfig):
             </남은 검색 횟수>
             
             응답 지침:
-            위의 지침을 따르고, 자유 형식의 텍스트로 추론 결과를 작성합니다.
-            필요시 <SEARCH> 태그나 <MIND_MAP_QUERY> 태그를 사용하세요.
+            1. 먼저 PLANNING 섹션에서 연구 계획을 수립하세요.
+            2. 다음으로 EXECUTION 섹션에서 분석을 수행하세요.
+            3. 마지막으로 REFLECTION 섹션에서 현재 연구를 평가하세요.
+            
+            각 섹션을 명확히 구분하고, 필요할 때 <SEARCH>나 <MIND_MAP_QUERY> 태그를 사용하세요.
             """)
         ])
         
-        # Mind Map 토큰 감지 - 토큰 형식 통일
+        # 반성 및 계획 내용을 Mind Map에 저장
+        try:
+            # 계획 내용 추출 및 저장
+            plan_match = re.search(r'(?i)# *PLANNING[\s\S]*?(?=# *EXECUTION|# *REFLECTION|$)', result.content)
+            if plan_match:
+                plan_content = plan_match.group(0).strip()
+                mind_map.create_research_node(
+                    research_topic=state.research_topic,
+                    node_type="ResearchPlan",
+                    content=plan_content,
+                    iteration=state.research_loop_count + 1
+                )
+            
+            # 반성 내용 추출 및 저장
+            reflection_match = re.search(r'(?i)# *REFLECTION[\s\S]*?(?=# *|$)', result.content)
+            if reflection_match:
+                reflection_content = reflection_match.group(0).strip()
+                mind_map.create_research_node(
+                    research_topic=state.research_topic,
+                    node_type="ResearchReflection",
+                    content=reflection_content,
+                    iteration=state.research_loop_count + 1
+                )
+        except Exception as e:
+            print(f"Mind Map에 계획/반성 저장 중 오류: {e}")
+            save_research_process(state, "Mind Map Update Error", str(e))
+        
+        # Mind Map 토큰 감지
         if "<MIND_MAP_QUERY>" in result.content:
             query_text = re.search(r'<MIND_MAP_QUERY>(.*?)</MIND_MAP_QUERY>', result.content, re.DOTALL)
             if query_text:
                 query = query_text.group(1).strip()
                 
-                # 마인드맵 쿼리 설정 (직접 처리하지 않고 외부 노드로 위임)
+                # 마인드맵 쿼리 설정
                 return SummaryState(
                     research_topic=state.research_topic,
                     search_query=query,
@@ -338,7 +393,7 @@ def reason_from_sources(state: SummaryState, config: RunnableConfig):
                     needs_external_info=True,
                     research_loop_count=state.research_loop_count,
                     web_research_results=state.web_research_results,
-                    query_type="mind_map"  # 마인드맵 쿼리 타입 설정
+                    query_type="mind_map"
                 )
                 
         # 웹 검색 토큰 처리
@@ -347,31 +402,29 @@ def reason_from_sources(state: SummaryState, config: RunnableConfig):
             end = result.content.find("</SEARCH>")
             search_query = result.content[start:end].strip()
 
-            # 새로운 search_query를 포함한 상태 반환, research_loop_count 증가
             return SummaryState(
                 research_topic=state.research_topic,
-                running_summary=result.content,  # 토큰을 포함한 전체 응답
+                running_summary=result.content,
                 needs_external_info=True,
-                research_loop_count=state.research_loop_count + 1,  # 검색 횟수 증가
+                research_loop_count=state.research_loop_count + 1,
                 web_research_results=state.web_research_results,
                 search_query=search_query,
-                query_type="web_search"  # 웹 검색 타입 설정
+                query_type="web_search"
             )
-        else:  # 더 이상 외부 정보가 필요 없는 경우 (최종 결과)
+        else:  # 더 이상 외부 정보가 필요 없는 경우
             return SummaryState(
                 research_topic=state.research_topic,
                 running_summary=result.content,
                 needs_external_info=False,
-                research_loop_count=state.research_loop_count + 1, # 카운트 증가
+                research_loop_count=state.research_loop_count + 1,
                 web_research_results=state.web_research_results,
                 search_query=state.search_query,
-                query_type="finalize_summary" # ""  # 쿼리 타입 초기화
+                query_type=""
             )
 
     except Exception as e:
         print(f"추론 중 오류 발생: {e}")
         save_research_process(state, "Reasoning Error", str(e))
-        # 오류 발생 시, needs_external_info를 False로 설정하여 종료
         return SummaryState(
             research_topic=state.research_topic,
             running_summary=state.running_summary,
@@ -379,7 +432,7 @@ def reason_from_sources(state: SummaryState, config: RunnableConfig):
             research_loop_count=state.research_loop_count + 1,
             web_research_results=state.web_research_results,
             search_query=state.search_query,
-            query_type="finalize_summary" # ""  # 쿼리 타입 초기화
+            query_type=""
         )
     
 
@@ -407,6 +460,8 @@ def query_mind_map(state: SummaryState, config: RunnableConfig) -> SummaryState:
             f"마인드맵 쿼리: {query}"
         )
         
+        time.sleep(1)
+
         # 마인드맵 쿼리 실행
         map_result = mind_map.retrieve_context(query, research_topic)
         
