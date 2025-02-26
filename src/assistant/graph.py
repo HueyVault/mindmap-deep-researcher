@@ -419,7 +419,7 @@ JSON 형식이 아닌 일반 텍스트로 응답해주세요.
                 research_loop_count=state.research_loop_count + 1,
                 web_research_results=state.web_research_results,
                 search_query=state.search_query,
-                query_type=""
+                query_type="reason_from_sources"
             )
 
     except Exception as e:
@@ -432,7 +432,7 @@ JSON 형식이 아닌 일반 텍스트로 응답해주세요.
             research_loop_count=state.research_loop_count + 1,
             web_research_results=state.web_research_results,
             search_query=state.search_query,
-            query_type=""
+            query_type="reason_from_sources"
         )
     
 
@@ -486,7 +486,7 @@ def query_mind_map(state: SummaryState, config: RunnableConfig) -> SummaryState:
             needs_external_info=True,  # 다시 추론으로 돌아감
             research_loop_count=state.research_loop_count,  # 카운트 유지
             web_research_results=state.web_research_results,
-            query_type="" # ""  # 쿼리 타입 초기화
+            query_type="reason_from_sources" # ""  # 쿼리 타입 초기화
         )
         
     except Exception as e:

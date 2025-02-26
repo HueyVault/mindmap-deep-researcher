@@ -1,0 +1,171 @@
+{
+  "timestamp": "20250226_084259",
+  "research_topic": "LLM 에서 fine tuning, 학습 없이 test time 에서 성능을 가장 좋게 하는 방법을 찾아서",
+  "nodes": [
+    {
+      "n": {
+        "topic": "LLM 에서 fine tuning, 학습 없이 test time 에서 성능을 가장 좋게 하는 방법을 찾아서 \n구현 방법 까지 조사해줘",
+        "id": "step_20250226_083934",
+        "type": "reasoning_preparation",
+        "content": "## 연구 시작: LLM Test Time 성능 향상 방법 연구 (1/6회차)\n\n**PLANNING**\n\n현재 LLM에서 Fine-tuning 없이 Test Time 성능을 극대화하는 방법에 대한 연구를 시작합니다. 아직 정보가 부족하므로, 다음 질문들을 중심으로 정보를 수집하고 분석할 계획입니다.\n\n1. **Test Time 성능 향상 방법론 분류:** Fine-tuning 없이 Test Time에 LLM 성능을 향상시키는 방법론들을 크게 분류하고 각 방법론의 핵심 아이디어를 파악합니다. (예: Prompt Engineering, In-Context Learning, Retrieval-Augmented Generation 등)\n2. **각 방법론별 최신 연구 동향:** 각 방법론별로 가장 최신의 연구 동향을 파악하고, SOTA(State-of-the-Art) 성능을 달성한 모델 및 기법을 조사합니다.\n3. **구현 가능성 및 난이도:** 각 방법론의 구현 가능성 및 난이도를 평가하고, 실제 적용 사례를 찾아봅니다. 특히, 코드 레벨에서의 구현 방법론을 중심으로 조사합니다.\n4. **각 방법론의 장단점 비교 분석:** 각 방법론의 장단점을 비교 분석하고, 특정 task나 데이터셋에 따라 어떤 방법론이 더 효과적인지 분석합니다.\n5. **Test Time 성능 측정 지표:** LLM의 Test Time 성능을 측정하는 데 사용되는 주요 지표들을 파악하고, 각 지표의 의미와 중요성을 이해합니다.\n\n위 질문들을 바탕으로, 다음 단계별 연구 접근 방식을 수립합니다.\n\n*   **1단계 (현재):** Test Time 성능 향상 방법론 분류 및 핵심 아이디어 파악 (본 회차)\n*   **2단계:** 각 방법론별 최신 연구 동향 조사 및 SOTA 모델/기법 파악\n*   **3단계:** 구현 가능성 및 난이도 평가, 실제 적용 사례 조사\n*   **4단계:** 각 방법론의 장단점 비교 분석 및 task/데이터셋별 효과 분석\n*   **5단계:** Test Time 성능 측정 지표 파악 및 중요성 이해\n*   **6단계:** 종합적인 분석 및 결론 도출, 향후 연구 방향 제시\n\n우선 1단계 목표 달성을 위해, Test Time 성능 향상 방법론 분류 및 핵심 아이디어 파악에 집중합니다.\n\n**EXECUTION**\n\nLLM에서 Fine-tuning 없이 Test Time 성능을 향상시키는 방법론은 크게 다음과 같이 분류할 수 있습니다.\n\n1.  **Prompt Engineering:** 프롬프트의 구조, 내용, 스타일 등을 조작하여 LLM의 답변 품질을 향상시키는 방법입니다. Zero-shot Prompting, Few-shot Prompting, Chain-of-Thought Prompting 등이 있습니다.\n2.  **In-Context Learning:** 프롬프트에 예시를 포함하여 LLM이 새로운 task를 학습하도록 유도하는 방법입니다. Few-shot Prompting이 대표적인 예시입니다.\n3.  **Retrieval-Augmented Generation (RAG):** 외부 지식 베이스에서 관련 정보를 검색하여 LLM의 답변 생성에 활용하는 방법입니다. LLM이 학습하지 않은 최신 정보나 전문 지식을 활용할 수 있다는 장점이 있습니다.\n4.  **Decoding Strategies:** LLM의 답변 생성 과정에서 다양한 디코딩 전략(Greedy Decoding, Beam Search, Sampling 등)을 사용하여 답변 품질을 향상시키는 방법입니다.\n5.  **Ensemble Methods:** 여러 LLM 모델의 답변을 결합하여 최종 답변을 생성하는 방법입니다. 모델 간의 다양성을 활용하여 성능을 향상시킬 수 있습니다.\n\n각 방법론의 핵심 아이디어는 다음과 같습니다.\n\n*   **Prompt Engineering:** LLM의 지식과 추론 능력을 최대한 활용할 수 있도록 프롬프트를 설계합니다.\n*   **In-Context Learning:** LLM에게 task에 대한 충분한 정보를 제공하여 학습 없이도 높은 성능을 달성하도록 합니다.\n*   **Retrieval-Augmented Generation:** LLM의 지식 부족 문제를 해결하고, 최신 정보나 전문 지식을 활용할 수 있도록 합니다.\n*   **Decoding Strategies:** LLM의 답변 생성 과정을 제어하여 더 정확하고 일관성 있는 답변을 생성하도록 합니다.\n*   **Ensemble Methods:** 여러 모델의 장점을 결합하여 더 강력한 성능을 달성합니다.\n\n위 내용에 대한 추가적인 정보를 얻기 위해 검색을 수행합니다.\n\n<SEARCH>LLM test time optimization without fine tuning</SEARCH>\n\n**REFLECTION**\n\n현재까지 LLM Test Time 성능 향상 방법론을 크게 분류하고 각 방법론의 핵심 아이디어를 파악했습니다. 하지만, 각 방법론별 최신 연구 동향, 구현 가능성, 장단점 등에 대한 정보는 아직 부족합니다.\n\n다음 회차에서는 검색 결과를 바탕으로 각 방법론별 최신 연구 동향을 조사하고, SOTA 모델 및 기법을 파악하는 데 집중할 계획입니다. 특히, Prompt Engineering과 RAG에 대한 최신 연구 동향을 중점적으로 조사할 것입니다. 또한, 각 방법론의 구현 가능성 및 난이도를 평가하기 위해 관련 코드 예제를 찾아볼 것입니다.",
+        "timestamp": "2025-02-26T08:39:34.730000000+00:00"
+      }
+    },
+    {
+      "n": {
+        "name": "LLM Test Time 성능 향상",
+        "description": "Fine-tuning 없이 LLM의 Test Time 성능을 극대화하는 방법 연구",
+        "id": "llm_test_time_성능_향상"
+      }
+    },
+    {
+      "n": {
+        "name": "Prompt Engineering",
+        "description": "프롬프트 조작을 통해 LLM 답변 품질을 향상시키는 방법",
+        "id": "prompt_engineering"
+      }
+    },
+    {
+      "n": {
+        "name": "In-Context Learning",
+        "description": "프롬프트에 예시를 포함하여 LLM이 새로운 task를 학습하도록 유도",
+        "id": "in_context_learning"
+      }
+    },
+    {
+      "n": {
+        "name": "Retrieval-Augmented Generation (RAG)",
+        "description": "외부 지식 베이스 검색 정보를 LLM 답변 생성에 활용",
+        "id": "retrieval_augmented_generation_rag_"
+      }
+    },
+    {
+      "n": {
+        "name": "Decoding Strategies",
+        "description": "LLM 답변 생성 과정에서 다양한 디코딩 전략을 사용하여 답변 품질 향상",
+        "id": "decoding_strategies"
+      }
+    },
+    {
+      "n": {
+        "name": "Ensemble Methods",
+        "description": "여러 LLM 모델의 답변을 결합하여 최종 답변 생성",
+        "id": "ensemble_methods"
+      }
+    },
+    {
+      "n": {
+        "name": "SOTA (State-of-the-Art)",
+        "description": "각 방법론별 최고 성능을 달성한 모델 및 기법",
+        "id": "sota_state_of_the_art_"
+      }
+    },
+    {
+      "n": {
+        "name": "구현 가능성 및 난이도",
+        "description": "각 방법론의 실제 구현 가능성 및 기술적 난이도 평가",
+        "id": "구현_가능성_및_난이도"
+      }
+    },
+    {
+      "n": {
+        "name": "Test Time 성능 측정 지표",
+        "description": "LLM의 Test Time 성능을 측정하는 데 사용되는 주요 지표",
+        "id": "test_time_성능_측정_지표"
+      }
+    },
+    {
+      "n": {
+        "name": "Fine-tuning",
+        "description": "사전 학습된 모델을 특정 task에 맞게 추가 학습시키는 과정",
+        "id": "fine_tuning"
+      }
+    },
+    {
+      "n": {
+        "name": "LLM 에서 fine tuning, 학습 없이 test time 에서 성능을 가장 좋게 하는 방법을 찾아서 \n구현 방법 까지 조사해줘",
+        "id": "llm_에서_fine_tuning_학습_없이_test_time_에서_성능을_가장_좋게_하는_방법을_찾아서_구현_방법_까지_조사해줘",
+        "timestamp": "2025-02-26T08:39:34.725000000+00:00"
+      }
+    }
+  ],
+  "relationships": [
+    {
+      "r": [
+        {},
+        "HAS_STEP",
+        {}
+      ]
+    },
+    {
+      "r": [
+        {},
+        "MENTIONS",
+        {}
+      ]
+    },
+    {
+      "r": [
+        {},
+        "MENTIONS",
+        {}
+      ]
+    },
+    {
+      "r": [
+        {},
+        "MENTIONS",
+        {}
+      ]
+    },
+    {
+      "r": [
+        {},
+        "MENTIONS",
+        {}
+      ]
+    },
+    {
+      "r": [
+        {},
+        "MENTIONS",
+        {}
+      ]
+    },
+    {
+      "r": [
+        {},
+        "MENTIONS",
+        {}
+      ]
+    },
+    {
+      "r": [
+        {},
+        "MENTIONS",
+        {}
+      ]
+    },
+    {
+      "r": [
+        {},
+        "MENTIONS",
+        {}
+      ]
+    },
+    {
+      "r": [
+        {},
+        "MENTIONS",
+        {}
+      ]
+    },
+    {
+      "r": [
+        {},
+        "MENTIONS",
+        {}
+      ]
+    }
+  ]
+}

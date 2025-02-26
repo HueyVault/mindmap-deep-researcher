@@ -1,0 +1,171 @@
+{
+  "timestamp": "20250226_082230",
+  "research_topic": "test time에서 fine tune 이나 모델 학습 없이 가장 성능이 좋아지는 방안에 대한 연구",
+  "nodes": [
+    {
+      "n": {
+        "name": "test time에서 fine tune 이나 모델 학습 없이 가장 성능이 좋아지는 방안에 대한 연구",
+        "id": "test_time에서_fine_tune_이나_모델_학습_없이_가장_성능이_좋아지는_방안에_대한_연구",
+        "timestamp": "2025-02-26T08:11:35.019000000+00:00"
+      }
+    },
+    {
+      "n": {
+        "topic": "test time에서 fine tune 이나 모델 학습 없이 가장 성능이 좋아지는 방안에 대한 연구",
+        "id": "step_20250226_081135",
+        "type": "reasoning_preparation",
+        "content": "## 연구 회차 1/10\n\n**PLANNING**\n\n현재 연구는 \"test time에서 fine tune 이나 모델 학습 없이 가장 성능이 좋아지는 방안\"에 대한 분석을 목표로 한다. 아직 초기 단계이므로, 다음과 같은 질문들을 중심으로 연구를 진행할 것이다.\n\n1. **Test-time adaptation (TTA)의 주요 방법론은 무엇인가?** (TTA는 fine-tuning 없이 test time에 모델을 적응시키는 기술을 포괄하는 용어라고 가정한다.)\n2. **각 방법론의 핵심 아이디어와 장단점은 무엇인가?**\n3. **어떤 종류의 데이터셋과 모델에 TTA가 효과적인가?**\n4. **TTA의 성능을 향상시키기 위한 추가적인 기술은 무엇인가?** (예: 앙상블, 데이터 증강)\n5. **TTA의 실제 적용 사례는 무엇인가?**\n\n이 질문들을 바탕으로, 먼저 TTA의 주요 방법론들을 조사하고, 각 방법론의 장단점과 적용 가능성을 분석할 것이다. 그 후, 성능 향상을 위한 추가적인 기술들을 살펴보고, 실제 적용 사례를 통해 TTA의 실용성을 평가할 것이다.\n\n우선순위가 높은 정보는 다음과 같다.\n\n1. TTA의 주요 방법론 (예: Test-Time Augmentation, Self-Training, Batch Normalization Statistics Adaptation)\n2. 각 방법론의 핵심 아이디어와 작동 방식\n\n이를 위해 다음 검색어를 사용할 것이다.\n\n<SEARCH>test time adaptation methods</SEARCH>\n\n**EXECUTION**\n\n검색 결과, 다음과 같은 주요 Test-Time Adaptation (TTA) 방법론들을 확인할 수 있었다.\n\n*   **Test-Time Augmentation (TTA):** 입력 데이터에 다양한 변환(augmentation)을 적용하고, 각 변환된 입력에 대한 예측을 평균하여 최종 예측을 생성한다. 간단하면서도 효과적인 방법이지만, 계산 비용이 증가할 수 있다.\n*   **Self-Training:** 모델이 예측한 pseudo-label을 사용하여 모델을 추가적으로 학습시킨다. test time에 얻은 정보를 활용하여 모델을 적응시키는 방법이다. pseudo-label의 정확도가 중요하며, 잘못된 label이 학습에 악영향을 미칠 수 있다.\n*   **Batch Normalization Statistics Adaptation:** Batch Normalization 레이어의 통계(mean, variance)를 test time에 입력되는 데이터에 맞게 조정한다. 학습 데이터와 test 데이터의 분포 차이를 완화하는 효과가 있다.\n*   **Adversarial Training at Test Time:** 적대적 공격을 통해 모델을 robust하게 만드는 방법. test time에 adversarial example을 생성하여 모델을 학습시키는 방식으로, 모델의 일반화 성능을 향상시킬 수 있다.\n\n각 방법론의 장단점과 적용 가능성은 다음과 같다.\n\n*   **TTA:** 구현이 간단하고 다양한 모델에 적용 가능하지만, 계산 비용이 증가하고, augmentation 전략에 따라 성능이 달라질 수 있다.\n*   **Self-Training:** test time 정보를 활용하여 모델을 적응시킬 수 있지만, pseudo-label의 품질에 따라 성능이 크게 좌우된다.\n*   **Batch Normalization Statistics Adaptation:** 계산 비용이 저렴하고 효과적이지만, 배치 크기에 민감하며, 모든 모델에 적용 가능한 것은 아니다.\n*   **Adversarial Training at Test Time:** 모델의 robustness를 향상시킬 수 있지만, 적대적 공격을 생성하는 과정이 복잡하고, 학습 데이터와 test 데이터의 분포 차이가 큰 경우 효과가 미미할 수 있다.\n\n**REFLECTION**\n\n현재까지 TTA의 주요 방법론들을 파악하고, 각 방법론의 장단점을 분석했다. 하지만, 각 방법론이 어떤 종류의 데이터셋과 모델에 효과적인지, 성능 향상을 위한 추가적인 기술은 무엇인지, 실제 적용 사례는 무엇인지에 대한 정보는 아직 부족하다.\n\n다음 단계에서는 다음과 같은 질문들을 중심으로 연구를 진행할 것이다.\n\n1. **각 TTA 방법론이 어떤 종류의 데이터셋과 모델에 효과적인가?** (예: 이미지 분류, 객체 탐지, 자연어 처리)\n2. **TTA의 성능을 향상시키기 위한 추가적인 기술은 무엇인가?** (예: 앙상블, 데이터 증강, meta-learning)\n3. **TTA의 실제 적용 사례는 무엇인가?** (예: 의료 영상 분석, 자율 주행)\n\n이를 위해 다음 검색어를 사용할 것이다.\n\n<SEARCH>test time adaptation applications</SEARCH>",
+        "timestamp": "2025-02-26T08:11:35.025000000+00:00"
+      }
+    },
+    {
+      "n": {
+        "name": "Test-Time Adaptation (TTA)",
+        "description": "테스트 시간에 모델을 fine-tuning 없이 적응시키는 기술. 다양한 방법론 존재.",
+        "id": "test_time_adaptation_tta_"
+      }
+    },
+    {
+      "n": {
+        "name": "Self-Training",
+        "description": "모델이 예측한 pseudo-label을 사용하여 모델을 추가 학습. pseudo-label 품질 중요.",
+        "id": "self_training"
+      }
+    },
+    {
+      "n": {
+        "name": "Batch Normalization Statistics Adaptation",
+        "description": "Batch Normalization 레이어 통계를 테스트 데이터에 맞게 조정. 분포 차이 완화.",
+        "id": "batch_normalization_statistics_adaptation"
+      }
+    },
+    {
+      "n": {
+        "name": "Adversarial Training at Test Time",
+        "description": "적대적 공격을 통해 모델을 robust하게 만듦. 일반화 성능 향상 가능.",
+        "id": "adversarial_training_at_test_time"
+      }
+    },
+    {
+      "n": {
+        "name": "Pseudo-label",
+        "description": "모델이 예측한 레이블. Self-Training에서 사용되며 품질이 중요함.",
+        "id": "pseudo_label"
+      }
+    },
+    {
+      "n": {
+        "name": "Data Augmentation",
+        "description": "데이터의 양을 늘리고 모델의 일반화 성능을 향상시키기 위해 사용되는 기술.",
+        "id": "data_augmentation"
+      }
+    },
+    {
+      "n": {
+        "name": "Ensemble",
+        "description": "여러 모델의 예측을 결합하여 최종 예측을 생성하는 방법. TTA 성능 향상에 사용 가능.",
+        "id": "ensemble"
+      }
+    },
+    {
+      "n": {
+        "name": "모델 Robustness",
+        "description": "적대적 공격이나 노이즈에 대한 모델의 안정성. Adversarial Training으로 향상 가능.",
+        "id": "모델_robustness"
+      }
+    },
+    {
+      "n": {
+        "name": "일반화 성능",
+        "description": "학습 데이터 외의 새로운 데이터에 대한 모델의 예측 능력.",
+        "id": "일반화_성능"
+      }
+    },
+    {
+      "n": {
+        "name": "Test-Time Augmentation (TTA)",
+        "description": "입력 데이터에 변환을 적용하고 예측을 평균하여 최종 예측 생성. 간단하지만 계산 비용 증가.",
+        "id": "test_time_augmentation_tta_"
+      }
+    }
+  ],
+  "relationships": [
+    {
+      "r": [
+        {},
+        "MENTIONS",
+        {}
+      ]
+    },
+    {
+      "r": [
+        {},
+        "MENTIONS",
+        {}
+      ]
+    },
+    {
+      "r": [
+        {},
+        "MENTIONS",
+        {}
+      ]
+    },
+    {
+      "r": [
+        {},
+        "MENTIONS",
+        {}
+      ]
+    },
+    {
+      "r": [
+        {},
+        "MENTIONS",
+        {}
+      ]
+    },
+    {
+      "r": [
+        {},
+        "MENTIONS",
+        {}
+      ]
+    },
+    {
+      "r": [
+        {},
+        "MENTIONS",
+        {}
+      ]
+    },
+    {
+      "r": [
+        {},
+        "MENTIONS",
+        {}
+      ]
+    },
+    {
+      "r": [
+        {},
+        "MENTIONS",
+        {}
+      ]
+    },
+    {
+      "r": [
+        {},
+        "HAS_STEP",
+        {}
+      ]
+    },
+    {
+      "r": [
+        {},
+        "MENTIONS",
+        {}
+      ]
+    }
+  ]
+}
