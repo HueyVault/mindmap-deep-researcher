@@ -792,7 +792,7 @@ def initialize_research(state_input: SummaryStateInput, config: RunnableConfig) 
 # Add nodes and edges 
 builder = StateGraph(SummaryState, input=SummaryStateInput, output=SummaryStateOutput)
 
-
+# dump save test code
 # 노드 추가
 builder.add_node("initialize", initialize_research)
 
@@ -800,6 +800,7 @@ builder.add_node("initialize", initialize_research)
 builder.add_edge(START, "initialize")
 builder.add_edge("initialize", END)
 
+# ## action test code
 # # 노드 추가
 # builder.add_node("initialize", initialize_research)
 # builder.add_node("reason_from_sources", reason_from_sources)
