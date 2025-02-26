@@ -14,7 +14,7 @@ class SearchAPI(Enum):
 @dataclass(kw_only=True)
 class Configuration:
     """The configurable fields for the research assistant."""
-    max_web_research_loops: int = 2
+    max_web_research_loops: int = 3
     local_llm: str = "gemini-2.0-flash-exp"
     search_api: SearchAPI = SearchAPI.TAVILY
     

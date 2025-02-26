@@ -710,33 +710,69 @@ def format_final_report(state: SummaryState) -> SummaryState:
     llm = ChatGoogleGenerativeAI(
         model="gemini-2.0-flash-exp",
         temperature=0,
-        convert_system_message_to_human=True
+        convert_system_message_to_human=True,
+        max_retries=3,  # 재시도 횟수 설정
+        timeout=30  # 타임아웃 설정
     )
     
     # 기존 분석 결과를 LLM에게 전달
-    final_analysis = llm.invoke([
-        SystemMessage(content="""주어진 연구 결과를 바탕으로 학술적인 최종 보고서를 작성해주세요.
+    try:
+        import time
+        
+        # 최종 보고서 생성 시도
+        save_research_process(
+            state,
+            "Final Report Generation",
+            "최종 보고서 생성 시작..."
+        )
+        
+        # API 호출 전 잠시 대기 (API 요청 속도 제한)
+        time.sleep(2)
+        
+        final_analysis = llm.invoke([
+            SystemMessage(content="""주어진 연구 결과를 바탕으로 학술적인 최종 보고서를 작성해주세요.
 다음 구조를 반드시 포함해야 합니다:
 1. 연구 개요
 2. 연구 방법
 3. 주요 발견사항
 4. 상세 분석
 5. 결론 및 시사점"""),
-        HumanMessage(content=f"""
+            HumanMessage(content=f"""
 연구 주제: {state.research_topic}
 분석 결과: {current_summary}
 분석 횟수: {state.research_loop_count}회
 """)
-    ])
-
-   
-    # 최종 보고서 구성
-    final_report = f"""# {state.research_topic} - 최종 연구 보고서
+        ])
+        
+        # 최종 보고서 구성
+        final_report = f"""# {state.research_topic} - 최종 연구 보고서
 
 {final_analysis.content}
 
 ## 참고 문헌
 {format_sources(state.web_research_results)}
+"""
+        
+    except Exception as e:
+        save_research_process(
+            state,
+            "Final Report Generation Error",
+            f"최종 보고서 생성 중 오류 발생: {str(e)}"
+        )
+        
+        # 오류 발생 시 간단한 보고서로 대체
+        final_report = f"""# {state.research_topic} - 최종 연구 보고서
+
+## 연구 개요
+{state.research_topic}에 대한 분석을 진행했습니다.
+
+## 연구 내용
+{current_summary[:2000]}...
+
+## 참고 문헌
+{format_sources(state.web_research_results)}
+
+*참고: API 할당량 제한으로 인해 최종 보고서 생성이 제한되었습니다.*
 """
     
     # 최종 보고서 저장
