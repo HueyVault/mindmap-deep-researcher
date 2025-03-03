@@ -19,7 +19,7 @@ driver = GraphDatabase.driver(NEO4J_URI, auth=(NEO4J_USERNAME, NEO4J_PASSWORD))
 'mind_map_backup_고령화_사회와_자산관리_시장의_변화_20250225_064941'
 'mind_map_backup_고령화_사회와_자산관리_시장의_변화_20250225_081123'
 'mind_map_backup_고령화_사회와_자산관리_시장의_변화_20250225_081439'
-'mind_map_backup_고령화_사회와_자산관리_시장의_변화_20250226_020308'
+'/apps/ollama-deep-researcher/mind_map_backups/mind_map_backup_고령화_사회와_자산관리_시장의_변화_20250225_064941.json'
 JSON_FILE_PATH = "/import/backup_json/mind_map_backup_고령화_사회와_자산관리_시장의_변화_20250226_020308.json"  # 실제 파일 경로로 변경
 JSON_FILE_PATH = "/apps/ollama-deep-researcher/mind_map_backups/mind_map_backup_고령화_사회와_자산관리_시장의_변화_20250226_020308.json"  # 실제 파일 경로로 변경
 
