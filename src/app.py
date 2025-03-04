@@ -87,29 +87,41 @@ def run_research(topic):
         input_state = SummaryStateInput(research_topic=topic)
         result = graph.invoke(input_state, config=config)
         
-        return result.running_summary
+        # 결과가 딕셔너리로 반환됨 - running_summary를 키로 접근
+        if 'running_summary' in result:
+            return result['running_summary']
+        else:
+            print(f"반환된 결과에 'running_summary' 키가 없습니다: {result}")
+            return "연구 결과를 생성하는 중에 오류가 발생했습니다. 다시 시도해 주세요."
     except Exception as e:
         st.error(f"연구 중 오류가 발생했습니다: {str(e)}")
-        return None
+        import traceback
+        print(f"연구 오류 상세 정보: {traceback.format_exc()}")
+        return f"연구 중 오류가 발생했습니다: {str(e)}"
 
 # 실행 버튼 처리
 if submit_button and research_topic and not st.session_state.is_researching:
     with st.spinner("AI가 연구를 진행하고 있습니다... (몇 분 정도 소요될 수 있습니다)"):
         st.session_state.is_researching = True
-        st.session_state.research_results = run_research(research_topic)
+        result = run_research(research_topic)
+        st.session_state.research_results = result
         st.session_state.is_researching = False
+        st.session_state.research_topic = research_topic  # 현재 주제 저장
     st.rerun()
 
 # 결과 표시
-if st.session_state.research_results:
+if "research_results" in st.session_state and st.session_state.research_results:
     st.markdown("## 연구 결과")
     st.markdown(st.session_state.research_results)
     
     # 결과 다운로드 버튼
-    result_text = st.session_state.research_results
+    topic_for_filename = st.session_state.get("research_topic", "연구결과")[:20]
+    
     st.download_button(
         label="연구 결과 다운로드",
-        data=result_text,
-        file_name=f"연구결과_{research_topic[:20]}.md",
+        data=st.session_state.research_results,
+        file_name=f"연구결과_{topic_for_filename}.md",
         mime="text/markdown"
     )
+elif "is_researching" in st.session_state and not st.session_state.is_researching:
+    st.warning("연구 결과가 없습니다. 다시 시도해 주세요.")
