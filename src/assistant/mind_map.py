@@ -431,7 +431,7 @@ class MindMapAgent:
                 
                 if not results:
                     # 로깅
-                    from src.assistant.graph import save_research_process, SummaryState
+                    from assistant.graph import save_research_process, SummaryState
                     
                     # 임시 state 객체 생성
                     temp_state = SummaryState(
@@ -466,9 +466,9 @@ class MindMapAgent:
             # 로깅
             query_info["response"] = response
 
-            from src.assistant.graph import save_research_process
+            from assistant.graph import save_research_process
             # SummaryState 객체 대신 클래스 생성 없이 처리할 수 있도록 함수 가져오기
-            from src.assistant.graph import SummaryState
+            from assistant.graph import SummaryState
             
             # 임시 state 객체 생성
             temp_state = SummaryState(
@@ -492,7 +492,7 @@ class MindMapAgent:
             print(error_msg)
             
             # 오류 로깅 코드 수정
-            from src.assistant.graph import save_research_process, SummaryState
+            from assistant.graph import save_research_process, SummaryState
             
             # 임시 state 객체 생성
             temp_state = SummaryState(

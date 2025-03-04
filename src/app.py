@@ -21,10 +21,23 @@ st.markdown("연구하고 싶은 주제를 입력하면 AI가 웹 검색과 마�
 with st.sidebar:
     st.header("설정")
     
-    # # Streamlit Cloud의 secrets에서 환경 변수 가져오기 시도
-    # neo4j_uri = st.text_input("Neo4j URI", value=st.secrets.get("neo4j_uri", "bolt://localhost:7687"))
-    # neo4j_username = st.text_input("Neo4j 사용자명", value=st.secrets.get("neo4j_username", "neo4j"))
-    # neo4j_password = st.text_input("Neo4j 비밀번호", type="password", value=st.secrets.get("neo4j_password", ""))
+    # Streamlit 시크릿에서 Neo4j 설정 가져오기
+    try:
+        neo4j_uri = st.secrets["NEO4J_URI"]
+        neo4j_username = st.secrets["NEO4J_USERNAME"]
+        neo4j_password = st.secrets["NEO4J_PASSWORD"]
+        st.success("Neo4j 설정이 시크릿에서 로드되었습니다.")
+    except KeyError:
+        st.warning("Neo4j 설정이 시크릿에 없습니다. 로컬 설정을 사용합니다.")
+        neo4j_uri = "bolt://localhost:7687"
+        neo4j_username = "neo4j"
+        neo4j_password = "password"
+    
+    # 테스트 환경에서만 설정 확인용 (배포 환경에서는 제거)
+    if not st.secrets.get("is_production", False):
+        st.text_input("Neo4j URI", value=neo4j_uri, disabled=True)
+        st.text_input("Neo4j 사용자명", value=neo4j_username, disabled=True)
+        st.text_input("Neo4j 비밀번호", type="password", value="********", disabled=True)
     
     st.divider()
     
@@ -90,7 +103,7 @@ if submit_button and research_topic and not st.session_state.is_researching:
         st.session_state.is_researching = True
         st.session_state.research_results = run_research(research_topic)
         st.session_state.is_researching = False
-    st.experimental_rerun()
+    st.rerun()
 
 # 결과 표시
 if st.session_state.research_results:
