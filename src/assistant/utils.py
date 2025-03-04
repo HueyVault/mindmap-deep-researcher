@@ -4,7 +4,85 @@ from typing import Dict, Any
 from langsmith import traceable
 from tavily import TavilyClient
 from assistant.state import SummaryState  # 이 줄을 추가
-from datetime import datetime
+import hashlib
+import pickle
+import os
+# 시간 모듈 임포트가 필요합니다 (첫 부분에 추가)
+import time
+from datetime import datetime, timedelta
+
+
+class RequestLimiter:
+    """API 요청 빈도 제한 및 캐싱"""
+    def __init__(self, cache_dir="api_cache", max_requests_per_minute=50):
+        self.cache_dir = cache_dir
+        self.max_requests = max_requests_per_minute
+        self.request_times = []
+        self.cache = {}
+        
+        # 캐시 디렉토리 생성
+        os.makedirs(cache_dir, exist_ok=True)
+        
+        # 기존 캐시 로드
+        try:
+            for filename in os.listdir(cache_dir):
+                if filename.endswith(".cache"):
+                    with open(os.path.join(cache_dir, filename), "rb") as f:
+                        self.cache[filename[:-6]] = pickle.load(f)
+        except Exception as e:
+            print(f"캐시 로드 중 오류: {e}")
+    
+    def _get_cache_key(self, prompt):
+        """프롬프트에 대한 캐시 키 생성"""
+        return hashlib.md5(prompt.encode()).hexdigest()
+    
+    def can_make_request(self):
+        """요청 가능 여부 확인"""
+        now = datetime.now()
+        # 1분 이상 지난 요청 제거
+        self.request_times = [t for t in self.request_times if now - t < timedelta(minutes=1)]
+        return len(self.request_times) < self.max_requests
+    
+    def wait_for_capacity(self):
+        """요청 가능할 때까지 대기"""
+        while not self.can_make_request():
+            time.sleep(0.5)
+    
+    def get_llm_response(self, llm, messages, force_refresh=False):
+        """LLM 응답 가져오기 (캐시 우선)"""
+        # 캐시 키 생성
+        prompt = "".join(msg.content for msg in messages)
+        cache_key = self._get_cache_key(prompt)
+        
+        # 캐시에서 찾기
+        if not force_refresh and cache_key in self.cache:
+            return self.cache[cache_key]
+        
+        # 용량 확인 및 대기
+        self.wait_for_capacity()
+        
+        # 요청 시간 기록
+        self.request_times.append(datetime.now())
+        
+        # LLM 호출
+        try:
+            response = llm.invoke(messages)
+            self.cache[cache_key] = response
+            
+            # 캐시 저장
+            try:
+                with open(os.path.join(self.cache_dir, f"{cache_key}.cache"), "wb") as f:
+                    pickle.dump(response, f)
+            except Exception as e:
+                print(f"캐시 저장 오류: {e}")
+                
+            return response
+        except Exception as e:
+            # 오류 발생 시 캐시에서 제거
+            if cache_key in self.cache:
+                del self.cache[cache_key]
+            raise e
+
 
 def deduplicate_and_format_sources(search_response, max_tokens_per_source, include_raw_content=False):
     """
@@ -238,3 +316,7 @@ def clear_session_files():
     """Clear the session files dictionary. 
     Call this when you want to force a new file for the same topic."""
     _session_files.clear()
+
+
+# 전역 요청 제한기 인스턴스 생성
+global_request_limiter = RequestLimiter(cache_dir="api_cache", max_requests_per_minute=45)

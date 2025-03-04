@@ -6,6 +6,8 @@ from langchain_community.graphs import Neo4jGraph
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.messages import SystemMessage, HumanMessage
 import os
+from assistant.utils import global_request_limiter
+
 
 class MindMapAgent:
     """연구 과정의 추론 맥락을 저장하고 구조화하는 Mind Map 에이전트"""
@@ -22,6 +24,11 @@ class MindMapAgent:
         )
         self._create_schema()
         
+    # 다음 메서드 추가
+    def _safe_llm_invoke(self, messages):
+        """요청 제한을 고려한 안전한 LLM 호출"""
+        return global_request_limiter.get_llm_response(self.llm, messages)
+
     def create_research_node(self, research_topic: str, node_type: str, content: str, iteration: int):
         """연구 계획 또는 반성 노드 생성"""
         # 노드 생성 시간
@@ -330,7 +337,8 @@ class MindMapAgent:
 """
         
         try:
-            result = self.llm.invoke([HumanMessage(content=prompt)])
+            result = self._safe_llm_invoke([HumanMessage(content=prompt)])
+
             relationships = self._parse_llm_response(result.content)
             
             # 관계 생성
@@ -376,7 +384,7 @@ class MindMapAgent:
         }}
         """
         
-        intent_result = self.llm.invoke([HumanMessage(content=intent_prompt)])
+        intent_result = self._safe_llm_invoke([HumanMessage(content=intent_prompt)])
         intent = self._parse_llm_response(intent_result.content)
         
         # 2. 목적에 맞는 Cypher 쿼리 생성
@@ -405,7 +413,7 @@ class MindMapAgent:
     Cypher 쿼리만 반환해주세요.
     """
 
-        cypher_result = self.llm.invoke([HumanMessage(content=cypher_prompt)])
+        cypher_result = self._safe_llm_invoke([HumanMessage(content=cypher_prompt)])
         cypher_query = self._extract_cypher_query(cypher_result.content)
         
         # 쿼리 로깅
@@ -460,7 +468,7 @@ class MindMapAgent:
             결과를 명확하게 설명하고, 발견된 관계와 정보를 강조해주세요.
             """
             
-            summary_result = self.llm.invoke([HumanMessage(content=summary_prompt)])
+            summary_result = self._safe_llm_invoke([HumanMessage(content=summary_prompt)])
             response = summary_result.content
             
             # 로깅
@@ -586,7 +594,7 @@ class MindMapAgent:
 """
 
         try:
-            result = self.llm.invoke([HumanMessage(content=prompt)])
+            result = self._safe_llm_invoke([HumanMessage(content=prompt)])
             return result.content.strip()
         except Exception as e:
             return f"요약 생성 중 오류: {str(e)}"
@@ -619,7 +627,7 @@ class MindMapAgent:
     """
         
         try:
-            result = self.llm.invoke([HumanMessage(content=prompt)])
+            result = self._safe_llm_invoke([HumanMessage(content=prompt)])
             concepts_data = self._parse_llm_response(result.content)
             
             # 개념 ID 생성 및 정규화
@@ -691,7 +699,7 @@ class MindMapAgent:
         
         try:
             # Cypher 쿼리 생성
-            cypher_result = self.llm.invoke([HumanMessage(content=cypher_prompt)])
+            cypher_result = self._safe_llm_invoke([HumanMessage(content=cypher_prompt)])
             cypher_query = self._extract_cypher_query(cypher_result.content)
             
             # 쿼리 실행
@@ -710,7 +718,7 @@ class MindMapAgent:
     5-10문장으로 요약하여 중요 정보만 제공해주세요.
     """
                 
-                summary_result = self.llm.invoke([HumanMessage(content=summary_prompt)])
+                summary_result = self._safe_llm_invoke([HumanMessage(content=summary_prompt)])
                 return summary_result.content
                 
             except Exception as e:

@@ -23,7 +23,8 @@ from assistant.utils import (
     format_sources,
     perplexity_search,
     save_research_process,
-    clear_session_files
+    clear_session_files,
+    global_request_limiter
 )
 
 # State management
@@ -316,42 +317,45 @@ JSON 형식이 아닌 일반 텍스트로 응답해주세요.
         
         time.sleep(3)
         
-        # LLM으로 추론 수행
-        result = llm.invoke([
-            SystemMessage(content=modified_reasoner_instructions.format(
-                research_topic=state.research_topic,
-                mind_map_context=mind_map_context if mind_map_context else "마인드맵에 아직 충분한 정보가 없습니다.",
-                reflection_context=reflection_context if reflection_context else "아직 반성 내용이 없습니다.",
-                planning_context=planning_context if planning_context else "아직 계획 내용이 없습니다.",
-                current_iteration=state.research_loop_count + 1,
-                max_loops=max_loops
-            )),
-            HumanMessage(content=f"""
-            <연구 주제>
-            {state.research_topic}
-            </연구 주제>
-            
-            <현재 맥락>
-            {formatted_sources}
-            </현재 맥락>
-            
-            <기존 분석>
-            {current_summary or '아직 분석이 없습니다.'}
-            </기존 분석>
-            
-            <남은 검색 횟수>
-            {max_loops - (state.research_loop_count or 0)}회
-            </남은 검색 횟수>
-            
-            응답 지침:
-            1. 먼저 PLANNING 섹션에서 연구 계획을 수립하세요.
-            2. 다음으로 EXECUTION 섹션에서 분석을 수행하세요.
-            3. 마지막으로 REFLECTION 섹션에서 현재 연구를 평가하세요.
-            
-            각 섹션을 명확히 구분하고, 필요할 때 <SEARCH>나 <MIND_MAP_QUERY> 태그를 사용하세요.
-            """)
-        ])
-        
+        # 수정된 LLM 호출 코드:
+        result = global_request_limiter.get_llm_response(
+            llm=llm,
+            messages=[
+                SystemMessage(content=modified_reasoner_instructions.format(
+                    research_topic=state.research_topic,
+                    mind_map_context=mind_map_context if mind_map_context else "마인드맵에 아직 충분한 정보가 없습니다.",
+                    reflection_context=reflection_context if reflection_context else "아직 반성 내용이 없습니다.",
+                    planning_context=planning_context if planning_context else "아직 계획 내용이 없습니다.",
+                    current_iteration=state.research_loop_count + 1,
+                    max_loops=max_loops
+                )),
+                HumanMessage(content=f"""
+                <연구 주제>
+                {state.research_topic}
+                </연구 주제>
+                
+                <현재 맥락>
+                {formatted_sources}
+                </현재 맥락>
+                
+                <기존 분석>
+                {current_summary or '아직 분석이 없습니다.'}
+                </기존 분석>
+                
+                <남은 검색 횟수>
+                {max_loops - (state.research_loop_count or 0)}회
+                </남은 검색 횟수>
+                
+                응답 지침:
+                1. 먼저 PLANNING 섹션에서 연구 계획을 수립하세요.
+                2. 다음으로 EXECUTION 섹션에서 분석을 수행하세요.
+                3. 마지막으로 REFLECTION 섹션에서 현재 연구를 평가하세요.
+                
+                각 섹션을 명확히 구분하고, 필요할 때 <SEARCH>나 <MIND_MAP_QUERY> 태그를 사용하세요.
+                """)
+            ]
+        )
+
         # 반성 및 계획 내용을 Mind Map에 저장
         try:
             # 계획 내용 추출 및 저장

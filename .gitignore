@@ -20,3 +20,5 @@ dist/
 build/
 
 .streamlit/secrets.toml
+
+api_cache/
