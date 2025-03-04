@@ -33,18 +33,13 @@ with st.sidebar:
         neo4j_username = "neo4j"
         neo4j_password = "password"
     
-    # 테스트 환경에서만 설정 확인용 (배포 환경에서는 제거)
-    if not st.secrets.get("is_production", False):
-        st.text_input("Neo4j URI", value=neo4j_uri, disabled=True)
-        st.text_input("Neo4j 사용자명", value=neo4j_username, disabled=True)
-        st.text_input("Neo4j 비밀번호", type="password", value="********", disabled=True)
-    
+
     st.divider()
     
     # 검색 API 설정
     search_api = st.selectbox(
         "검색 API 선택",
-        ["tavily", "perplexity"],
+        ["tavily"],
         index=0
     )
     
