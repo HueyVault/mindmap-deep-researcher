@@ -197,36 +197,42 @@ def save_research_process(state: SummaryState, step_name: str, step_content: str
         step_name (str): Name of the current step (e.g., 'query', 'search_results')
         step_content (str, optional): Additional content to save
     """
-    # 연구 주제를 해시값으로 변환하여 세션 ID로 사용
-    session_id = hash(state.research_topic)
-    
-    # 이 세션의 첫 저장인 경우 새 파일 생성
-    if session_id not in _session_files:
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        topic_slug = "".join(c if c.isalnum() else "_" for c in state.research_topic)[:30]
-        filename = f"{topic_slug}_{timestamp}_research_process.md"
+    try:
+        # 연구 주제를 해시값으로 변환하여 세션 ID로 사용
+        session_id = hash(state.research_topic)
         
-        os.makedirs('research_results', exist_ok=True)
-        filepath = os.path.join('research_results', filename)
-        _session_files[session_id] = filepath
-        
-        # 새 파일 생성 및 헤더 작성
-        with open(filepath, 'w', encoding='utf-8') as f:
-            f.write(f"# Research Process: {state.research_topic}\n")
-            f.write(f"Started at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n")
+        # 이 세션의 첫 저장인 경우 새 파일 생성
+        if session_id not in _session_files:
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            topic_slug = "".join(c if c.isalnum() else "_" for c in state.research_topic)[:30]
+            filename = f"{topic_slug}_{timestamp}_research_process.md"
             
-        print(f"\nNew research session started. Results will be saved to: {filepath}")
-    
-    # 현재 세션의 파일에 내용 추가
-    filepath = _session_files[session_id]
-    log_timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    
-    content = f"\n## {step_name} - {log_timestamp}\n"
-    if step_content:
-        content += f"{step_content}\n"
-    
-    with open(filepath, 'a', encoding='utf-8') as f:
-        f.write(content)
+            # Streamlit Cloud에서도 작동하도록 상대 경로 사용
+            os.makedirs('research_results', exist_ok=True)
+            filepath = os.path.join('research_results', filename)
+            _session_files[session_id] = filepath
+            
+            # 새 파일 생성 및 헤더 작성
+            with open(filepath, 'w', encoding='utf-8') as f:
+                f.write(f"# Research Process: {state.research_topic}\n")
+                f.write(f"Started at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n")
+                
+            print(f"\nNew research session started. Results will be saved to: {filepath}")
+        
+        # 현재 세션의 파일에 내용 추가
+        filepath = _session_files[session_id]
+        log_timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        
+        content = f"\n## {step_name} - {log_timestamp}\n"
+        if step_content:
+            content += f"{step_content}\n"
+        
+        with open(filepath, 'a', encoding='utf-8') as f:
+            f.write(content)
+    except Exception as e:
+        # Streamlit Cloud에서 파일 접근 권한이 없을 수 있으므로 에러 처리
+        print(f"로그 저장 중 오류 발생 (Streamlit Cloud에서는 정상): {e}")
+        pass
 
 def clear_session_files():
     """Clear the session files dictionary. 
