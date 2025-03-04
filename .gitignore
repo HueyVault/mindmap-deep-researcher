@@ -19,3 +19,4 @@ nohup.out
 dist/
 build/
 
+.streamlit/secrets.toml
