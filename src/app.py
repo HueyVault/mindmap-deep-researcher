@@ -1,12 +1,14 @@
 import streamlit as st
 import os
+import threading
+import time
 from langchain_core.runnables import Runnable
 from assistant.graph import graph
 from assistant.state import SummaryStateInput, SummaryStateOutput
 from assistant.configuration import Configuration
 from assistant.utils import get_node_status_emoji
 import json
-
+from streamlit.runtime.scriptrunner import add_script_run_ctx
 
 # 페이지 설정
 st.set_page_config(
@@ -56,7 +58,7 @@ with st.sidebar:
     )
     
     # 연구 루프 설정
-    max_loops = st.slider("최대 연구 루프 횟수", 1, 10, 6)
+    max_loops = st.slider("최대 연구 루프 횟수", 1, 10, 1)
 
 # 메인 입력 영역
 with st.container():
@@ -73,14 +75,13 @@ if "research_results" not in st.session_state:
     st.session_state.research_results = None
     st.session_state.is_researching = False
 
+# 백그라운드 연구 실행 상태 추적
+if "research_thread_running" not in st.session_state:
+    st.session_state.research_thread_running = False
 
 # 연구 실행 함수
-def run_research(topic):
+def run_research_in_background(topic):
     try:
-        # 세션 상태 초기화
-        st.session_state.node_history = []
-        st.session_state.current_node = None
-        
         # 설정 객체 생성
         config = {
             "configurable": {
@@ -106,39 +107,66 @@ def run_research(topic):
         
         # 결과가 딕셔너리로 반환됨 - running_summary를 키로 접근
         if 'running_summary' in result:
-            return result['running_summary']
+            st.session_state.research_results = result['running_summary']
         else:
             print(f"반환된 결과에 'running_summary' 키가 없습니다: {result}")
-            return "연구 결과를 생성하는 중에 오류가 발생했습니다. 다시 시도해 주세요."
+            st.session_state.research_results = "연구 결과를 생성하는 중에 오류가 발생했습니다. 다시 시도해 주세요."
+        
+        # 연구 완료 표시
+        st.session_state.is_researching = False
+        st.session_state.research_thread_running = False
+        
     except Exception as e:
-        st.error(f"연구 중 오류가 발생했습니다: {str(e)}")
+        st.session_state.research_results = f"연구 중 오류가 발생했습니다: {str(e)}"
+        st.session_state.is_researching = False
+        st.session_state.research_thread_running = False
         import traceback
         print(f"연구 오류 상세 정보: {traceback.format_exc()}")
-        return f"연구 중 오류가 발생했습니다: {str(e)}"
+
 
 # 실행 버튼 처리
 if submit_button and research_topic and not st.session_state.is_researching:
-    # 진행 상황 표시 영역 생성
-    progress_container = st.container()
+    # 세션 상태 초기화
+    st.session_state.node_history = []
+    st.session_state.current_node = None
+    st.session_state.research_results = None
+    st.session_state.is_researching = True
+    st.session_state.research_topic = research_topic  # 현재 주제 저장
     
-    with st.spinner("AI가 연구를 진행하고 있습니다... (몇 분 정도 소요될 수 있습니다)"):
-        st.session_state.is_researching = True
-        result = run_research(research_topic)
-        st.session_state.research_results = result
-        st.session_state.is_researching = False
-        st.session_state.research_topic = research_topic  # 현재 주제 저장
+    # 백그라운드에서 연구 실행 (Streamlit 컨텍스트 추가)
+    research_thread = threading.Thread(
+        target=run_research_in_background, 
+        args=(research_topic,)
+    )
+    research_thread.daemon = True  # 프로세스 종료 시 함께 종료되도록 설정
     
-    # 진행 상황 표시
-    with progress_container:
-        st.write("### 연구 진행 과정")
+    # 중요: 스레드에 Streamlit 컨텍스트 추가
+    add_script_run_ctx(research_thread)
+    
+    research_thread.start()
+    st.session_state.research_thread_running = True
+    
+    # 페이지 새로고침
+    st.rerun()
+
+# 연구 진행 중 화면 표시
+if st.session_state.is_researching:
+    st.write("### 연구 진행 중...")
+    
+    # 진행 상태 표시
+    if st.session_state.get("node_history"):
         for step in st.session_state.node_history:
             emoji = get_node_status_emoji(step["node"])
             st.write(f"{emoji} **{step['timestamp']}** - {step['node']} ({step['status']})")
             if step.get("content"):
-                with st.expander(f"상세 정보 보기"):
+                with st.expander("상세 정보 보기"):
                     st.write(step["content"])
     
-    st.rerun()
+    # 연구가 진행 중이면 자동 새로고침
+    if st.session_state.research_thread_running:
+        st.empty()  # 빈 요소 생성 (페이지 길이 유지)
+        time.sleep(2)  # 2초 대기
+        st.rerun()  # 페이지 새로고침
 
 # 결과 표시
 if "research_results" in st.session_state and st.session_state.research_results:
