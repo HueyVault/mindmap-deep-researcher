@@ -136,69 +136,6 @@ def finalize_summary(state: SummaryState):
     
     return {"running_summary": final_report}
 
-
-def update_mind_map(state: SummaryState, config: RunnableConfig) -> SummaryState:
-    """Mind Map 업데이트 및 쿼리 처리"""
-
-    try:
-        # Configuration에서 Neo4j 설정 가져오기
-        configurable = Configuration.from_runnable_config(config)
-        
-        # Mind Map 에이전트 초기화
-        mind_map = MindMapAgent(
-            url=configurable.neo4j_uri,
-            username=configurable.neo4j_username,
-            password=configurable.neo4j_password
-        )
-        # running_summary 가공.
-        current_summary = state.running_summary
-        if isinstance(current_summary, list):
-            current_summary = "\n".join(f"- {item}" for item in current_summary)
-        elif current_summary is None:
-            current_summary = ""
-
-        # [MIND_MAP_QUERY] 토큰 처리
-        if isinstance(current_summary, str) and "[MIND_MAP_QUERY]" in current_summary:
-            # 1. 쿼리 추출
-            query_start = current_summary.find("[MIND_MAP_QUERY]") + len("[MIND_MAP_QUERY]")
-            query_end = current_summary.find("[/MIND_MAP_QUERY]")
-            query = current_summary[query_start:query_end].strip()
-
-            # 2. Mind Map 쿼리 실행
-            query_result = mind_map.query_mind_map(query)
-
-            # 3. 결과 통합 (MindMap 쿼리/응답 부분만 변경)
-            updated_summary = current_summary.replace(f"[MIND_MAP_QUERY]{query}[/MIND_MAP_QUERY]", f"Mind Map Query Result:\n{query_result}")
-
-            # 4. MindMap 작업 결과 저장
-            save_research_process(
-                state,
-                "Mind Map Operation",
-                f"Operation Type: QUERY\nQuery: {query}\nResult:\n{query_result}"
-            )
-            # 5. 상태 업데이트 (research_loop_count 증가 안함)
-            return SummaryState(
-                research_topic=state.research_topic,
-                running_summary=updated_summary, # 변경된 부분
-                needs_external_info=True,
-                research_loop_count=state.research_loop_count, # 여기!
-                web_research_results=state.web_research_results,
-                search_query=state.search_query
-            )
-
-        # 일반 업데이트 (Mind Map 저장) : 이부분은 reason_from_sources에서 처리
-        return state
-        
-    except Exception as e:
-        print(f"Mind Map 처리 중 오류 발생: {e}")
-        save_research_process(
-            state,
-            "Mind Map Error",
-            f"Error occurred: {str(e)}"
-        )
-        return state  # 오류 발생 시 원래 상태 반환
-
-
 def reason_from_sources(state: SummaryState, config: RunnableConfig):
     """소스로부터 추론 및 다음 단계 결정 - 반성(Reflection)과 계획(Planning) 포함"""
     try:
@@ -369,6 +306,8 @@ JSON 형식이 아닌 일반 텍스트로 응답해주세요.
 
         # 반성 및 계획 내용을 Mind Map에 저장
         try:
+            print(f"Mind Map에 계획/반성 저장 시작")
+
             # 계획 내용 추출 및 저장
             plan_match = re.search(r'(?i)# *PLANNING[\s\S]*?(?=# *EXECUTION|# *REFLECTION|$)', result.content)
             if plan_match:
@@ -395,10 +334,12 @@ JSON 형식이 아닌 일반 텍스트로 응답해주세요.
             save_research_process(state, "Mind Map Update Error", str(e))
         
         # Mind Map 토큰 감지
-        if "<MIND_MAP_QUERY>" in result.content:
+        if "<MIND_MAP_QUERY>" in result.content and "</MIND_MAP_QUERY>" in result.content:
+            print(f"마인드맵 쿼리 토큰 감지됨: {result.content}")  # 디버깅 로그
             query_text = re.search(r'<MIND_MAP_QUERY>(.*?)</MIND_MAP_QUERY>', result.content, re.DOTALL)
             if query_text:
                 query = query_text.group(1).strip()
+                print(f"추출된 마인드맵 쿼리: '{query}'")  # 디버깅 로그
                 
                 # 마인드맵 쿼리 설정
                 new_state = SummaryState(
@@ -408,11 +349,12 @@ JSON 형식이 아닌 일반 텍스트로 응답해주세요.
                     needs_external_info=True,
                     research_loop_count=state.research_loop_count,
                     web_research_results=state.web_research_results,
-                    query_type="mind_map"
+                    query_type="mind_map"  # 여기서 설정!
                 )
+                print(f"마인드맵 쿼리로 전환: query_type={new_state.query_type}")  # 디버깅 로그
                 # 상태 업데이트 후 반환
                 update_node_status("reason_from_sources", "완료", f"다음 검색 쿼리: {query}")
-                return new_state 
+                return new_state
                 
         # 웹 검색 토큰 처리
         elif "<SEARCH>" in result.content and "</SEARCH>" in result.content:
@@ -469,6 +411,7 @@ JSON 형식이 아닌 일반 텍스트로 응답해주세요.
 def query_mind_map(state: SummaryState, config: RunnableConfig) -> SummaryState:
     """마인드맵 쿼리 수행 함수"""
     # 노드 시작 상태 업데이트
+    print(f"\n===== 마인드맵 쿼리 실행: {state.search_query} =====")
     update_node_status("query_mind_map", "시작", f"마인드맵 쿼리: {state.search_query}")
     
     try:

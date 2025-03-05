@@ -124,7 +124,42 @@ class MindMapAgent:
                 "topic": research_topic
             }
         )
+            # 초기 Evidence 노드와 관계 생성 (HAS_EVIDENCE 관계 초기화)
+        try:
+            self.graph.query(
+                """
+                MATCH (t:Topic {id: $topic_id})
+                MERGE (e:Evidence {id: 'init_evidence'})
+                ON CREATE SET e.content = '초기화 증거',
+                        e.source = '시스템',
+                        e.timestamp = datetime()
+                MERGE (t)-[r:HAS_EVIDENCE]->(e)
+                """,
+                {
+                    "topic_id": topic_id
+                }
+            )
+        except Exception as e:
+            print(f"초기 Evidence 노드 생성 오류 (무시 가능): {e}")
         
+        # 초기 ReasoningStep 노드와 관계 생성 (HAS_STEP 관계 초기화)
+        try:
+            self.graph.query(
+                """
+                MATCH (t:Topic {id: $topic_id})
+                MERGE (rs:ReasoningStep {id: 'init_step'})
+                ON CREATE SET rs.content = '연구 초기화',
+                        rs.iteration = 0,
+                        rs.timestamp = datetime()
+                MERGE (t)-[r:HAS_STEP]->(rs)
+                """,
+                {
+                    "topic_id": topic_id
+                }
+            )
+        except Exception as e:
+            print(f"초기 ReasoningStep 노드 생성 오류 (무시 가능): {e}")
+            
         print(f"새 연구 주제에 대한 Mind Map 초기화 완료: {research_topic}")
 
     def _create_schema(self):
@@ -668,58 +703,3 @@ class MindMapAgent:
         
         # 코드 블록이 없는 경우 전체 텍스트 사용
         return response.strip()
-
-    def query_mind_map(self, query: str) -> str:
-        """마인드맵에 직접 질의"""
-        if not query:
-            return "질의가 비어 있습니다."
-        
-        cypher_prompt = f"""Neo4j 그래프 데이터베이스에 대한 Cypher 쿼리를 생성해주세요.
-
-    스키마:
-    - (Topic) - 연구 주제
-    - (ReasoningStep) - 추론 단계
-    - (Concept) - 개념 
-    - (Evidence) - 증거
-
-    관계:
-    - (Topic)-[HAS_STEP]->(ReasoningStep)
-    - (Topic)-[HAS_EVIDENCE]->(Evidence)
-    - (ReasoningStep)-[MENTIONS]->(Concept)
-    - (ReasoningStep)-[LEADS_TO]->(ReasoningStep)
-    - (Concept)-[관계유형]->(Concept) - 관계 유형: IS_PART_OF, CAUSES, CORRELATES_WITH, CONTRADICTS, SUPPORTS, IS_TYPE_OF, FOLLOWS
-
-    사용자 질의: {query}
-
-    위 질의에 가장 적합한 Cypher 쿼리를 생성해 주세요.
-    """
-        
-        try:
-            # Cypher 쿼리 생성
-            cypher_result = self._safe_llm_invoke([HumanMessage(content=cypher_prompt)])
-            cypher_query = self._extract_cypher_query(cypher_result.content)
-            
-            # 쿼리 실행
-            try:
-                results = self.graph.query(cypher_query)
-                
-                # 결과 요약
-                if not results:
-                    return "해당 질의에 대한 결과가 없습니다."
-                
-                summary_prompt = f"""다음 Neo4j 쿼리 결과를 사용자가 이해하기 쉽게 요약해주세요:
-                
-    원래 질의: {query}
-    검색 결과: {results}
-
-    5-10문장으로 요약하여 중요 정보만 제공해주세요.
-    """
-                
-                summary_result = self._safe_llm_invoke([HumanMessage(content=summary_prompt)])
-                return summary_result.content
-                
-            except Exception as e:
-                return f"쿼리 실행 중 오류가 발생했습니다: {str(e)}"
-                
-        except Exception as e:
-            return f"마인드맵 질의 중 오류가 발생했습니다: {str(e)}"
