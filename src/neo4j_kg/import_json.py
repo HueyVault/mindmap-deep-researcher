@@ -22,7 +22,7 @@ driver = GraphDatabase.driver(NEO4J_URI, auth=(NEO4J_USERNAME, NEO4J_PASSWORD))
 'mind_map_backup_고령화_사회와_자산관리_시장의_변화_20250225_081439'
 'mind_map_backup_고령화_사회와_자산관리_시장의_변화_20250226_020308'
 JSON_FILE_PATH = "/import/backup_json/mind_map_backup_고령화_사회와_자산관리_시장의_변화_20250226_020308.json"  # 실제 파일 경로로 변경
-JSON_FILE_PATH = "/apps/ollama-deep-researcher/mind_map_backups/mind_map_backup_아무거나_연구해줘_20250305_052306.json" # 실제 파일 경로로 변경
+JSON_FILE_PATH = "/apps/ollama-deep-researcher/mind_map_backups/mind_map_backup_한국의_지속가능한_에너지_정책_에_대해_연구해줘_20250305_083108.json" # 실제 파일 경로로 변경
 
 
 def import_json_with_apoc(file_path: str):
