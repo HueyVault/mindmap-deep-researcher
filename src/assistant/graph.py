@@ -306,7 +306,6 @@ JSON 형식이 아닌 일반 텍스트로 응답해주세요.
 
         # 반성 및 계획 내용을 Mind Map에 저장
         try:
-            print(f"Mind Map에 계획/반성 저장 시작")
 
             # 계획 내용 추출 및 저장
             plan_match = re.search(r'(?i)# *PLANNING[\s\S]*?(?=# *EXECUTION|# *REFLECTION|$)', result.content)
@@ -335,11 +334,10 @@ JSON 형식이 아닌 일반 텍스트로 응답해주세요.
         
         # Mind Map 토큰 감지
         if "<MIND_MAP_QUERY>" in result.content and "</MIND_MAP_QUERY>" in result.content:
-            print(f"마인드맵 쿼리 토큰 감지됨: {result.content}")  # 디버깅 로그
+
             query_text = re.search(r'<MIND_MAP_QUERY>(.*?)</MIND_MAP_QUERY>', result.content, re.DOTALL)
             if query_text:
                 query = query_text.group(1).strip()
-                print(f"추출된 마인드맵 쿼리: '{query}'")  # 디버깅 로그
                 
                 # 마인드맵 쿼리 설정
                 new_state = SummaryState(
@@ -351,7 +349,7 @@ JSON 형식이 아닌 일반 텍스트로 응답해주세요.
                     web_research_results=state.web_research_results,
                     query_type="mind_map"  # 여기서 설정!
                 )
-                print(f"마인드맵 쿼리로 전환: query_type={new_state.query_type}")  # 디버깅 로그
+                
                 # 상태 업데이트 후 반환
                 update_node_status("reason_from_sources", "완료", f"다음 검색 쿼리: {query}")
                 return new_state
@@ -411,7 +409,6 @@ JSON 형식이 아닌 일반 텍스트로 응답해주세요.
 def query_mind_map(state: SummaryState, config: RunnableConfig) -> SummaryState:
     """마인드맵 쿼리 수행 함수"""
     # 노드 시작 상태 업데이트
-    print(f"\n===== 마인드맵 쿼리 실행: {state.search_query} =====")
     update_node_status("query_mind_map", "시작", f"마인드맵 쿼리: {state.search_query}")
     
     try:
