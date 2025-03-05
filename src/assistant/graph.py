@@ -91,6 +91,23 @@ def web_research(state: SummaryState, config: RunnableConfig):
         if new_results:
             current_results.append({'results': new_results})
     
+    # URL 목록 추출
+    urls = []
+    try:
+        for result_group in current_results:
+            if 'results' in result_group:
+                for item in result_group['results']:
+                    if 'url' in item:
+                        urls.append(item['url'])
+    except Exception as e:
+        print(f"URL 추출 중 오류: {e}")
+    
+    # URL 목록 문자열 생성 (최대 3개만 표시)
+    url_summary = ", ".join(urls[:3])
+    if len(urls) > 3:
+        url_summary += f" 외 {len(urls)-3}개"
+
+
     new_state = SummaryState(
         research_topic=state.research_topic,
         web_research_results=current_results,  # 중복이 제거된 결과 사용
@@ -101,7 +118,7 @@ def web_research(state: SummaryState, config: RunnableConfig):
     )
 
     # 결과 반환 전 노드 완료 상태 업데이트
-    update_node_status("web_research", "완료", f"검색 결과: {current_results}")
+    update_node_status("web_research", "완료", f"검색 결과: {url_summary}")
     return new_state
 
 
@@ -247,7 +264,7 @@ JSON 형식이 아닌 일반 텍스트로 응답해주세요.
         
         # LLM 설정
         llm = ChatGoogleGenerativeAI(
-            model="gemini-2.0-flash-exp",
+            model="gemini-2.0-flash-thinking-exp", # "gemini-2.0-flash-exp"# "gemini-2.0-flash-thinking-exp"
             temperature=0.2,
             convert_system_message_to_human=True
         )
@@ -501,7 +518,7 @@ def format_final_report(state: SummaryState) -> SummaryState:
     
     # LLM 설정
     llm = ChatGoogleGenerativeAI(
-        model="gemini-2.0-flash-exp",
+        model="gemini-2.0-flash-thinking-exp", # "gemini-2.0-flash-exp", # "gemini-2.0-flash-thinking-exp"
         temperature=0,
         convert_system_message_to_human=True,
         max_retries=3,  # 재시도 횟수 설정

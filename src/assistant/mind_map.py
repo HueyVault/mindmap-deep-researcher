@@ -19,7 +19,8 @@ class MindMapAgent:
             password=password
         )
         self.llm = ChatGoogleGenerativeAI(
-            model="gemini-2.0-flash-exp",
+            # model="gemini-2.0-flash-exp",
+            model="gemini-2.0-flash-thinking-exp", # "gemini-2.0-flash-thinking-exp"
             temperature=0
         )
         self._create_schema()

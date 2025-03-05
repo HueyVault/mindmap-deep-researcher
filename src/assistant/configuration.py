@@ -15,7 +15,7 @@ class SearchAPI(Enum):
 class Configuration:
     """The configurable fields for the research assistant."""
     max_web_research_loops: int = 3
-    local_llm: str = "gemini-2.0-flash-exp"
+    local_llm: str = "gemini-2.0-flash-thinking-exp" # "gemini-2.0-flash-exp"
     search_api: SearchAPI = SearchAPI.TAVILY
     
     # Neo4j 설정 추가 (기본값 제공)
