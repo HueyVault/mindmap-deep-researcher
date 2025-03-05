@@ -33,10 +33,7 @@ class MindMapAgent:
         """연구 계획 또는 반성 노드 생성"""
         # 노드 생성 시간
         timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-        
-        # 연구 주제 노드가 있는지 확인하고 없으면 생성
-        self._create_research_topic_if_not_exists(research_topic)
-        
+
         # 노드 생성 쿼리
         query = f"""
         MATCH (topic:ResearchTopic {{name: $topic_name}})

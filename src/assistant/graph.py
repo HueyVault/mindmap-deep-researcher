@@ -24,7 +24,8 @@ from assistant.utils import (
     perplexity_search,
     save_research_process,
     clear_session_files,
-    global_request_limiter
+    global_request_limiter,
+    update_node_status
 )
 
 # State management
@@ -45,6 +46,9 @@ from assistant.prompts import (
 
 def web_research(state: SummaryState, config: RunnableConfig):
     """ Gather information from the web """
+    
+    # 노드 시작 상태 업데이트
+    update_node_status("web_research", "시작", f"검색 쿼리: {state.search_query}")
     
     configurable = Configuration.from_runnable_config(config)
     search_api = configurable.search_api.value if isinstance(configurable.search_api, Enum) else configurable.search_api
@@ -87,7 +91,7 @@ def web_research(state: SummaryState, config: RunnableConfig):
         if new_results:
             current_results.append({'results': new_results})
     
-    return SummaryState(
+    new_state = SummaryState(
         research_topic=state.research_topic,
         web_research_results=current_results,  # 중복이 제거된 결과 사용
         running_summary=state.running_summary,
@@ -95,6 +99,10 @@ def web_research(state: SummaryState, config: RunnableConfig):
         research_loop_count=state.research_loop_count,
         search_query=state.search_query
     )
+
+    # 결과 반환 전 노드 완료 상태 업데이트
+    update_node_status("web_research", "완료", f"검색 결과: {current_results}")
+    return new_state
 
 
 def finalize_summary(state: SummaryState):
@@ -194,6 +202,9 @@ def update_mind_map(state: SummaryState, config: RunnableConfig) -> SummaryState
 def reason_from_sources(state: SummaryState, config: RunnableConfig):
     """소스로부터 추론 및 다음 단계 결정 - 반성(Reflection)과 계획(Planning) 포함"""
     try:
+        # 노드 시작 상태 업데이트
+        update_node_status("reason_from_sources", "시작", f"반복 {state.research_loop_count}회: 분석 중")
+        
         # Configuration에서 Neo4j 설정 가져오기
         configurable = Configuration.from_runnable_config(config)
         max_loops = configurable.max_web_research_loops
@@ -390,7 +401,7 @@ JSON 형식이 아닌 일반 텍스트로 응답해주세요.
                 query = query_text.group(1).strip()
                 
                 # 마인드맵 쿼리 설정
-                return SummaryState(
+                new_state = SummaryState(
                     research_topic=state.research_topic,
                     search_query=query,
                     running_summary=result.content,
@@ -399,6 +410,9 @@ JSON 형식이 아닌 일반 텍스트로 응답해주세요.
                     web_research_results=state.web_research_results,
                     query_type="mind_map"
                 )
+                # 상태 업데이트 후 반환
+                update_node_status("reason_from_sources", "완료", f"다음 검색 쿼리: {query}")
+                return new_state 
                 
         # 웹 검색 토큰 처리
         elif "<SEARCH>" in result.content and "</SEARCH>" in result.content:
@@ -406,7 +420,7 @@ JSON 형식이 아닌 일반 텍스트로 응답해주세요.
             end = result.content.find("</SEARCH>")
             search_query = result.content[start:end].strip()
 
-            return SummaryState(
+            new_state = SummaryState(
                 research_topic=state.research_topic,
                 running_summary=result.content,
                 needs_external_info=True,
@@ -415,8 +429,12 @@ JSON 형식이 아닌 일반 텍스트로 응답해주세요.
                 search_query=search_query,
                 query_type="web_search"
             )
+            # 상태 업데이트 후 반환
+            update_node_status("reason_from_sources", "완료", f"다음 검색 쿼리: {search_query}")
+            return new_state   
+
         else:  # 더 이상 외부 정보가 필요 없는 경우
-            return SummaryState(
+            new_state = SummaryState(
                 research_topic=state.research_topic,
                 running_summary=result.content,
                 needs_external_info=False,
@@ -425,11 +443,15 @@ JSON 형식이 아닌 일반 텍스트로 응답해주세요.
                 search_query=state.search_query,
                 query_type="reason_from_sources"
             )
+            # 상태 업데이트 후 반환
+            update_node_status("reason_from_sources", "완료", f"분석 완료: {state.research_loop_count+1}회")
+            return new_state   
 
     except Exception as e:
         print(f"추론 중 오류 발생: {e}")
         save_research_process(state, "Reasoning Error", str(e))
-        return SummaryState(
+
+        new_state = SummaryState(
             research_topic=state.research_topic,
             running_summary=state.running_summary,
             needs_external_info=False,
@@ -438,10 +460,17 @@ JSON 형식이 아닌 일반 텍스트로 응답해주세요.
             search_query=state.search_query,
             query_type="reason_from_sources"
         )
+
+        # 오류 상태 업데이트 후 반환
+        update_node_status("reason_from_sources", "오류", f"오류 발생: {str(e)}")
+        return new_state    
     
 
 def query_mind_map(state: SummaryState, config: RunnableConfig) -> SummaryState:
     """마인드맵 쿼리 수행 함수"""
+    # 노드 시작 상태 업데이트
+    update_node_status("query_mind_map", "시작", f"마인드맵 쿼리: {state.search_query}")
+    
     try:
         # Configuration에서 Neo4j 설정 가져오기
         configurable = Configuration.from_runnable_config(config)
@@ -483,7 +512,7 @@ def query_mind_map(state: SummaryState, config: RunnableConfig) -> SummaryState:
         )
         
         # 수정된 내용으로 다시 추론
-        return SummaryState(
+        new_state = SummaryState(
             research_topic=state.research_topic,
             search_query="",  # 쿼리 초기화
             running_summary=modified_content,
@@ -492,6 +521,9 @@ def query_mind_map(state: SummaryState, config: RunnableConfig) -> SummaryState:
             web_research_results=state.web_research_results,
             query_type="reason_from_sources" # ""  # 쿼리 타입 초기화
         )
+        # 결과 반환 전 노드 완료 상태 업데이트
+        update_node_status("query_mind_map", "완료", "마인드맵 쿼리 완료")
+        return new_state
         
     except Exception as e:
         print(f"마인드맵 쿼리 중 오류 발생: {e}")
@@ -503,7 +535,7 @@ def query_mind_map(state: SummaryState, config: RunnableConfig) -> SummaryState:
             f"<MIND_MAP_ERROR>마인드맵 쿼리 중 오류 발생: {str(e)}</MIND_MAP_ERROR>"
         )
         
-        return SummaryState(
+        new_state = SummaryState(
             research_topic=state.research_topic,
             running_summary=error_content,
             needs_external_info=True,  # 다시 추론
@@ -511,9 +543,14 @@ def query_mind_map(state: SummaryState, config: RunnableConfig) -> SummaryState:
             web_research_results=state.web_research_results,
             search_query=""
         )
+        # 결과 반환 전 노드 완료 상태 업데이트
+        update_node_status("query_mind_map", "완료", "마인드맵 쿼리 오류")
+        return new_state
 
 def format_final_report(state: SummaryState) -> SummaryState:
     """최종 연구 보고서 형식화"""
+    # 노드 시작 상태 업데이트
+    update_node_status("finalize_summary", "시작", "최종 보고서 작성 중")
     
     # running_summary 타입 체크 및 변환
     current_summary = state.running_summary
@@ -598,6 +635,8 @@ def format_final_report(state: SummaryState) -> SummaryState:
         final_report
     )
     
+    # 결과 반환 전 노드 완료 상태 업데이트
+    update_node_status("finalize_summary", "완료", "최종 보고서 작성 완료")
     return SummaryState(
         research_topic=state.research_topic,
         running_summary=final_report,
@@ -609,6 +648,10 @@ def format_final_report(state: SummaryState) -> SummaryState:
 
 def initialize_research(state_input: SummaryStateInput, config: RunnableConfig) -> SummaryState:
     """사용자 입력으로 초기 상태 생성 및 Mind Map 초기화"""
+    
+    # 노드 시작 상태 업데이트
+    update_node_status("initialize", "시작", f"연구 주제: {state_input.research_topic}")
+    
     clear_session_files()
     
     # Configuration에서 Neo4j 설정 가져오기
@@ -639,13 +682,17 @@ def initialize_research(state_input: SummaryStateInput, config: RunnableConfig) 
             f"오류: {str(e)}"
         )
     
-    return SummaryState(
+    # 결과 반환 전 노드 완료 상태 업데이트
+    initial_state = SummaryState(
         research_topic=state_input.research_topic,
         web_research_results=[],
         running_summary=None,
-        needs_external_info=True,  # 처음에는 항상 정보 수집이 필요
-        search_query=state_input.research_topic  # 초기 검색어는 연구 주제로 설정
+        needs_external_info=True,
+        search_query=state_input.research_topic
     )
+    
+    update_node_status("initialize", "완료", f"초기화 완료: {state_input.research_topic}")
+    return initial_state
 
 
 # Add nodes and edges 

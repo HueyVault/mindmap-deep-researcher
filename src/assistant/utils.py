@@ -10,6 +10,7 @@ import os
 # 시간 모듈 임포트가 필요합니다 (첫 부분에 추가)
 import time
 from datetime import datetime, timedelta
+import streamlit as st
 
 
 class RequestLimiter:
@@ -317,6 +318,49 @@ def clear_session_files():
     Call this when you want to force a new file for the same topic."""
     _session_files.clear()
 
+# 노드 상태 처리 관련 함수들 추가 (파일 끝에 추가)
+def update_node_status(node_name, status, content=None):
+    """노드 상태 업데이트 함수
+    
+    Args:
+        node_name (str): 현재 실행 중인 노드 이름
+        status (str): 현재 상태 (예: "시작", "완료", "오류")
+        content (str, optional): 노드 처리 결과 내용
+    """
+    if "node_history" not in st.session_state:
+        st.session_state.node_history = []
+    
+    timestamp = datetime.now().strftime("%H:%M:%S")
+    
+    # 상태 정보 저장
+    node_info = {
+        "timestamp": timestamp,
+        "node": node_name,
+        "status": status,
+        "content": content
+    }
+    
+    # 세션 상태에 추가
+    st.session_state.node_history.append(node_info)
+    
+    # 현재 실행 중인 노드 업데이트
+    st.session_state.current_node = node_name
+    
+    # 디버그 정보 출력
+    print(f"[{timestamp}] 노드 {node_name}: {status}")
 
+def get_node_status_emoji(node_name):
+    """노드 이름에 따른 이모지 반환"""
+    node_emojis = {
+        "initialize": "🔍",
+        "reason_from_sources": "🧠", 
+        "web_research": "🌐",
+        "query_mind_map": "🔄",
+        "finalize_summary": "📝"
+    }
+    return node_emojis.get(node_name, "⚙️")
+    
 # 전역 요청 제한기 인스턴스 생성
 global_request_limiter = RequestLimiter(cache_dir="api_cache", max_requests_per_minute=45)
+
+

@@ -4,7 +4,9 @@ from langchain_core.runnables import Runnable
 from assistant.graph import graph
 from assistant.state import SummaryStateInput, SummaryStateOutput
 from assistant.configuration import Configuration
+from assistant.utils import get_node_status_emoji
 import json
+
 
 # 페이지 설정
 st.set_page_config(
@@ -16,6 +18,16 @@ st.set_page_config(
 # 헤더 및 설명
 st.title("🧠 AI 연구 보조")
 st.markdown("연구하고 싶은 주제를 입력하면 AI가 웹 검색과 마인드맵을 활용하여 심층 분석 보고서를 생성합니다.")
+
+# 세션 상태 초기화
+if "node_history" not in st.session_state:
+    st.session_state.node_history = []
+if "current_node" not in st.session_state:
+    st.session_state.current_node = None
+if "research_results" not in st.session_state:
+    st.session_state.research_results = None
+if "is_researching" not in st.session_state:
+    st.session_state.is_researching = False
 
 # 네오포제이 설정 입력 (사이드바)
 with st.sidebar:
@@ -61,9 +73,14 @@ if "research_results" not in st.session_state:
     st.session_state.research_results = None
     st.session_state.is_researching = False
 
+
 # 연구 실행 함수
 def run_research(topic):
     try:
+        # 세션 상태 초기화
+        st.session_state.node_history = []
+        st.session_state.current_node = None
+        
         # 설정 객체 생성
         config = {
             "configurable": {
@@ -101,16 +118,37 @@ def run_research(topic):
 
 # 실행 버튼 처리
 if submit_button and research_topic and not st.session_state.is_researching:
+    # 진행 상황 표시 영역 생성
+    progress_container = st.container()
+    
     with st.spinner("AI가 연구를 진행하고 있습니다... (몇 분 정도 소요될 수 있습니다)"):
         st.session_state.is_researching = True
         result = run_research(research_topic)
         st.session_state.research_results = result
         st.session_state.is_researching = False
         st.session_state.research_topic = research_topic  # 현재 주제 저장
+    
+    # 진행 상황 표시
+    with progress_container:
+        st.write("### 연구 진행 과정")
+        for step in st.session_state.node_history:
+            emoji = get_node_status_emoji(step["node"])
+            st.write(f"{emoji} **{step['timestamp']}** - {step['node']} ({step['status']})")
+            if step.get("content"):
+                with st.expander(f"상세 정보 보기"):
+                    st.write(step["content"])
+    
     st.rerun()
 
 # 결과 표시
 if "research_results" in st.session_state and st.session_state.research_results:
+    # 연구 진행 과정 표시 (축소된 형태)
+    if st.session_state.get("node_history"):
+        with st.expander("연구 진행 과정 보기", expanded=False):
+            for i, step in enumerate(st.session_state.node_history):
+                emoji = get_node_status_emoji(step["node"])
+                st.write(f"{emoji} **{step['timestamp']}** - {step['node']} ({step['status']})")
+                
     st.markdown("## 연구 결과")
     st.markdown(st.session_state.research_results)
     
