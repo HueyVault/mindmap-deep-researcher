@@ -76,9 +76,23 @@ class MindMapAgent:
             backup_path = os.path.join(backup_dir, backup_filename)
             
             # 현재 데이터 백업
+            # 노드 데이터 가져오기
             nodes = self.graph.query("MATCH (n) RETURN n")
-            relationships = self.graph.query("MATCH ()-[r]->() RETURN r")
             
+            # 관계 데이터 가져오기 - 시작 노드와 끝 노드 정보 포함
+            relationships_query = """
+            MATCH (source)-[r]->(target)
+            RETURN {
+                source_id: source.id, 
+                source_name: source.name, 
+                rel_type: type(r), 
+                target_id: target.id, 
+                target_name: target.name
+            } as relationship
+            """
+            relationships = self.graph.query(relationships_query)
+            
+            # 백업 데이터 구조화
             backup_data = {
                 "timestamp": timestamp,
                 "research_topic": research_topic,
@@ -89,7 +103,7 @@ class MindMapAgent:
             with open(backup_path, 'w', encoding='utf-8') as f:
                 json.dump(backup_data, f, ensure_ascii=False, indent=2, default=str)
             
-            print(f"Mind Map 백업 완료: {backup_path}")
+            print(f"Mind Map 백업 완료: {backup_path} (노드: {len(nodes)}개, 관계: {len(relationships)}개)")
         except Exception as e:
             print(f"Mind Map 백업 중 오류: {e}")
         

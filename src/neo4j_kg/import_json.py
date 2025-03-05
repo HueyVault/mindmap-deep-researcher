@@ -2,6 +2,7 @@ import os
 import json  # JSON 파일 직접 처리 (apoc.load.json 사용 안 할 때)
 from neo4j import GraphDatabase
 from dotenv import load_dotenv
+import re  # 이 줄 추가
 
 # .env 파일 로드
 load_dotenv()
@@ -21,7 +22,7 @@ driver = GraphDatabase.driver(NEO4J_URI, auth=(NEO4J_USERNAME, NEO4J_PASSWORD))
 'mind_map_backup_고령화_사회와_자산관리_시장의_변화_20250225_081439'
 'mind_map_backup_고령화_사회와_자산관리_시장의_변화_20250226_020308'
 JSON_FILE_PATH = "/import/backup_json/mind_map_backup_고령화_사회와_자산관리_시장의_변화_20250226_020308.json"  # 실제 파일 경로로 변경
-JSON_FILE_PATH = "/apps/ollama-deep-researcher/mind_map_backups/mind_map_backup_고령화_사회와_자산관리_시장의_변화_20250226_020308.json"  # 실제 파일 경로로 변경
+JSON_FILE_PATH = "/apps/ollama-deep-researcher/mind_map_backups/mind_map_backup_아무거나_연구해줘_20250305_052306.json" # 실제 파일 경로로 변경
 
 
 def import_json_with_apoc(file_path: str):
@@ -133,27 +134,38 @@ def import_mind_map_backup(file_path: str):
                 
                 print(f"노드 {nodes_created}개 생성 완료")
                 
-                # 관계 복원 - 좀 더 복잡하므로 두 단계로 처리
-                # 1. 모든 노드 ID와 관계 유형을 추출
-                # 2. ID를 기반으로 관계 생성
-                
-                # 관계 복원을 위해 노드 매핑
-                relationships_query = """
-                MATCH (source), (target)
-                WHERE source.id = $source_id AND target.id = $target_id
-                CREATE (source)-[r:$rel_type]->(target)
-                SET r.timestamp = datetime()
-                RETURN source, r, target
-                """
-                
-                # 임시 대안: 기본 관계 생성 (ReasoningStep -> Topic, Concept -> Concept 등)
-                topic_id = None
-                for node in data['nodes']:
-                    if 'n' in node and node['n'].get('id', '').startswith('고령화_사회'):
-                        topic_id = node['n']['id']
-                        break
-                
-                if topic_id:
+                # 관계 복원 (새로운 방식)
+                relationships_created = 0
+                if 'relationships' in data and data['relationships']:
+                    for rel_data in data['relationships']:
+                        if 'relationship' in rel_data:
+                            rel_info = rel_data['relationship']
+                            source_id = rel_info.get('source_id')
+                            target_id = rel_info.get('target_id')
+                            rel_type = rel_info.get('rel_type')
+                            
+                            if source_id and target_id and rel_type:
+                                # 관계 생성 쿼리
+                                rel_query = f"""
+                                MATCH (source), (target)
+                                WHERE source.id = $source_id AND target.id = $target_id
+                                CREATE (source)-[r:{rel_type}]->(target)
+                                RETURN r
+                                """
+                                
+                                try:
+                                    session.run(rel_query, source_id=source_id, target_id=target_id)
+                                    relationships_created += 1
+                                except Exception as e:
+                                    print(f"관계 생성 중 오류: {e} - 소스: {source_id}, 타겟: {target_id}, 유형: {rel_type}")
+                    
+                    print(f"관계 {relationships_created}개 복원 완료")
+                else:
+                    print("관계 데이터가 없거나 형식이 올바르지 않습니다. 관계 복원 생략.")
+                    
+                    # 기존 방식의 관계 생성 시도 (백업 데이터에 관계가 없는 경우 대안)
+                    topic_id = re.sub(r'\W+', '_', data.get('research_topic', '').lower())
+                    
                     # Topic -> ReasoningStep 관계 생성
                     step_query = """
                     MATCH (t:Topic), (s:ReasoningStep)
