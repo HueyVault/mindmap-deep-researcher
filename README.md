@@ -1,192 +1,63 @@
-# Ollama Deep Researcher
+# **Mind Map 기반 DeepResearch 프로젝트**
 
-Ollama Deep Researcher is a fully local web research assistant that uses any LLM hosted by [Ollama](https://ollama.com/search). Give it a topic and it will generate a web search query, gather web search results (via [Tavily](https://www.tavily.com/) by default), summarize the results of web search, reflect on the summary to examine knowledge gaps, generate a new search query to address the gaps, search, and improve the summary for a user-defined number of cycles. It will provide the user a final markdown summary with all sources used. 
+### **개요**
 
-![research-rabbit](https://github.com/user-attachments/assets/4308ee9c-abf3-4abb-9d1e-83e7c2c3f187)
+DeepResearch를 직접 구현하고 서비스화한 프로젝트입니다. 특히, reasoning 모델의 추론 능력을 향상시키기 위해 **마인드 맵(Mind Map) 방식**을 도입하였습니다.
 
-Short summary:
-<video src="https://github.com/user-attachments/assets/02084902-f067-4658-9683-ff312cab7944" controls></video>
+- **기간:** 2025.02.12 ~ 2025.03.05
+- **포트폴리오:** [링크](https://github.com/HueyVault/ollama-deep-researcher)
+- **배포:** [링크](https://ollama-deep-researcher-3qcnh6x8rmqvktfdbbkjou.streamlit.app/)
 
-## 📺 Video Tutorials
+---
 
-See it in action or build it yourself? Check out these helpful video tutorials:
-- [Overview of Ollama Deep Researcher with R1](https://www.youtube.com/watch?v=sGUjmyfof4Q) - Load and test [DeepSeek R1](https://api-docs.deepseek.com/news/news250120) [distilled models](https://ollama.com/library/deepseek-r1).
-- [Building Ollama Deep Researcher from Scratch](https://www.youtube.com/watch?v=XGuTzHoqlj8) - Overview of how this is built.
+### **주요 기술 및 프레임워크**
 
-## 🚀 Quickstart
+- **LLM 모델:** Gemini 2.0 Flash (Thinking Exp)
+- **프레임워크 및 라이브러리:** LangGraph, Streamlit, Neo4j, UV
+- **배포 환경:** Streamlit Cloud
 
-### Mac 
+---
 
-1. Download the Ollama app for Mac [here](https://ollama.com/download).
+### **수행 업무**
 
-2. Pull a local LLM from [Ollama](https://ollama.com/search). As an [example](https://ollama.com/library/deepseek-r1:8b): 
-```bash
-ollama pull deepseek-r1:8b
-```
+- **LangGraph**를 활용하여 **각 Task를 Node로 구분**하고, 이를 연결하여 **Workflow** 구성
+- 각 추론 과정을 **Neo4j(Graph DB)에 저장**하여 연구 프로세스를 기록
+- LLM이 스스로 판단하여 외부 도구를 활용하도록 프롬프트를 설계하여 외부 도구 호출 토큰을 생성하도록 유도
+- 외부 도구 사용 방식
+    - **WebSearch:** LLM이 질의를 생성하고, **Tavily API**를 호출하여 웹 검색 수행
+    - **MindMap:** LLM이 **Cypher Query**를 생성하여 Neo4j에서 연구 과정을 조회하고, 진행 상황을 확인하도록 구현
+- **UV 프로젝트 관리 도구**를 활용하여 작업 진행
+- **Streamlit Cloud**를 통해 프로젝트 배포
 
-3. Clone the repository:
-```bash
-git clone https://github.com/langchain-ai/ollama-deep-researcher.git
-cd ollama-deep-researcher
-```
+---
 
-4. Select a web search tool:
+### 화면
 
-* [Tavily API](https://tavily.com/)
-* [Perplexity API](https://www.perplexity.ai/hub/blog/introducing-the-sonar-pro-api)
+노드 구성 화면 - langsmith 화면
 
-5. Copy the example environment file:
-```bash
-cp .env.example .env
-```
+streamlit 배포 화면
 
-6. Edit the `.env` file with your preferred text editor and add your API keys:
-```bash
-# Required: Choose one search provider and add its API key
-TAVILY_API_KEY=tvly-xxxxx      # Get your key at https://tavily.com
-PERPLEXITY_API_KEY=pplx-xxxxx  # Get your key at https://www.perplexity.ai
-```
+streamlit 결과 화면
 
-Note: If you prefer using environment variables directly, you can set them in your shell:
-```bash
-export TAVILY_API_KEY=tvly-xxxxx
-# OR
-export PERPLEXITY_API_KEY=pplx-xxxxx
-```
+neo4j graph 화면
 
-After setting the keys, verify they're available:
-```bash
-echo $TAVILY_API_KEY  # Should show your API key
-```
+---
 
-7. (Recommended) Create a virtual environment:
-```bash
-python -m venv .venv
-source .venv/bin/activate
-```
+### **문제점 및 개선 방향**
 
-8. Launch the assistant with the LangGraph server:
+**문제점**
 
-```bash
-# Install uv package manager
-curl -LsSf https://astral.sh/uv/install.sh | sh
-uvx --refresh --from "langgraph-cli[inmem]" --with-editable . --python 3.11 langgraph dev
-```
+- 성과 지표를 정의하고 측정하는 것이 어려움
+- 기존 방식보다 개선되었음을 입증하는 데 높은 비용 발생
 
-### Windows 
+**개선 방향**
 
-1. Download the Ollama app for Windows [here](https://ollama.com/download).
+- 성과 지표를 정의 하고 **비용이 적게 드는 방식**으로 설정 하여 성과를 측정
+- 연구용 AI 에이전트가 아닌 **문제를 직접 해결하는 AI 에이전트**로 주제 변경 (예: Code Agent, Game Agent)
 
-2. Pull a local LLM from [Ollama](https://ollama.com/search). As an [example](https://ollama.com/library/deepseek-r1:8b): 
-```powershell
-ollama pull deepseek-r1:8b
-```
+---
 
-3. Clone the repository:
-```bash
-git clone https://github.com/langchain-ai/ollama-deep-researcher.git
-cd ollama-deep-researcher
-```
- 
-4. Select a web search tool:
+### **참고 자료**
 
-* [Tavily API](https://tavily.com/)
-* [Perplexity API](https://www.perplexity.ai/hub/blog/introducing-the-sonar-pro-api)
-
-5. Copy the example environment file:
-```bash
-cp .env.example .env
-```
-
-Edit the `.env` file with your preferred text editor and add your API keys:
-```bash
-# Required: Choose one search provider and add its API key
-TAVILY_API_KEY=tvly-xxxxx      # Get your key at https://tavily.com
-PERPLEXITY_API_KEY=pplx-xxxxx  # Get your key at https://www.perplexity.ai
-```
-
-Note: If you prefer using environment variables directly, you can set them in Windows (via System Properties or PowerShell):
-
-```bash
-export TAVILY_API_KEY=<your_tavily_api_key>
-export PERPLEXITY_API_KEY=<your_perplexity_api_key>
-```
-
-Crucially, restart your terminal/IDE (or sometimes even your computer) after setting it for the change to take effect. After setting the keys, verify they're available:
-```bash
-echo $TAVILY_API_KEY  # Should show your API key
-```
-
-7. (Recommended) Create a virtual environment: Install `Python 3.11` (and add to PATH during installation). Restart your terminal to ensure Python is available, then create and activate a virtual environment:
-
-```powershell
-python -m venv .venv
-.venv\Scripts\Activate.ps1
-```
-
-8. Launch the assistant with the LangGraph server:
-
-```powershell
-# Install dependencies 
-pip install -e .
-pip install langgraph-cli[inmem]
-
-# Start the LangGraph server
-langgraph dev
-```
-
-### Using the LangGraph Studio UI 
-
-When you launch LangGraph server, you should see the following output and Studio will open in your browser:
-> Ready!
-> 
-> API: http://127.0.0.1:2024
-> 
-> Docs: http://127.0.0.1:2024/docs
-> 
-> LangGraph Studio Web UI: https://smith.langchain.com/studio/?baseUrl=http://127.0.0.1:2024
-
-Open `LangGraph Studio Web UI` via the URL in the output above. 
-
-In the `configuration` tab:
-* Pick your web search tool (Tavily or Perplexity) (it will by default be `Tavily`) 
-* Set the name of your local LLM to use with Ollama (it will by default be `llama3.2`) 
-* You can set the depth of the research iterations (it will by default be `3`)
-
-<img width="1621" alt="Screenshot 2025-01-24 at 10 08 31 PM" src="https://github.com/user-attachments/assets/7cfd0e04-28fd-4cfa-aee5-9a556d74ab21" />
-
-Give the assistant a topic for research, and you can visualize its process!
-
-<img width="1621" alt="Screenshot 2025-01-24 at 10 08 22 PM" src="https://github.com/user-attachments/assets/4de6bd89-4f3b-424c-a9cb-70ebd3d45c5f" />
-
-## How it works
-
-Ollama Deep Researcher is inspired by [IterDRAG](https://arxiv.org/html/2410.04343v1#:~:text=To%20tackle%20this%20issue%2C%20we,used%20to%20generate%20intermediate%20answers.). This approach will decompose a query into sub-queries, retrieve documents for each one, answer the sub-query, and then build on the answer by retrieving docs for the second sub-query. Here, we do similar:
-- Given a user-provided topic, use a local LLM (via [Ollama](https://ollama.com/search)) to generate a web search query
-- Uses a search engine (configured for [Tavily](https://www.tavily.com/)) to find relevant sources
-- Uses LLM to summarize the findings from web search related to the user-provided research topic
-- Then, it uses the LLM to reflect on the summary, identifying knowledge gaps
-- It generates a new search query to address the knowledge gaps
-- The process repeats, with the summary being iteratively updated with new information from web search
-- It will repeat down the research rabbit hole 
-- Runs for a configurable number of iterations (see `configuration` tab)  
-
-## Outputs
-
-The output of the graph is a markdown file containing the research summary, with citations to the sources used.
-
-All sources gathered during research are saved to the graph state. 
-
-You can visualize them in the graph state, which is visible in LangGraph Studio:
-
-![Screenshot 2024-12-05 at 4 08 59 PM](https://github.com/user-attachments/assets/e8ac1c0b-9acb-4a75-8c15-4e677e92f6cb)
-
-The final summary is saved to the graph state as well: 
-
-![Screenshot 2024-12-05 at 4 10 11 PM](https://github.com/user-attachments/assets/f6d997d5-9de5-495f-8556-7d3891f6bc96)
-
-## Deployment Options
-
-There are [various ways](https://langchain-ai.github.io/langgraph/concepts/#deployment-options) to deploy this graph.
-
-See [Module 6](https://github.com/langchain-ai/langchain-academy/tree/main/module-6) of LangChain Academy for a detailed walkthrough of deployment options with LangGraph.
+- https://github.com/langchain-ai/ollama-deep-researcher
+- https://arxiv.org/abs/2502.04644
