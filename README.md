@@ -1,4 +1,4 @@
-# **Mind Map 기반 DeepResearch 프로젝트**
+# **Mind Map 활용 DeepResearch 프로젝트**
 
 ### **개요**
 
