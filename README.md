@@ -5,12 +5,12 @@
 DeepResearch를 직접 구현하고 서비스화한 프로젝트입니다. 특히, reasoning 모델의 추론 능력을 향상시키기 위해 **마인드 맵(Mind Map) 방식**을 도입하였습니다.
 
 - **기간:** 2025.02.12 ~ 2025.03.05
-- **포트폴리오:** [링크](https://github.com/HueyVault/ollama-deep-researcher)
+- **포트폴리오:** [링크](https://experienced-gourd-eae.notion.site/Mind-Map-DeepResearch-1b26e4944b1f80c19476d62103763da1)
 - **배포:** [링크](https://ollama-deep-researcher-3qcnh6x8rmqvktfdbbkjou.streamlit.app/)
 
 ---
 
-### **주요 기술 및 프레임워크**
+### **사용 도구 및 프레임워크**
 
 - **LLM 모델:** Gemini 2.0 Flash (Thinking Exp)
 - **프레임워크 및 라이브러리:** LangGraph, Streamlit, Neo4j, UV
