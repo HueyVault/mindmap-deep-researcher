@@ -2,10 +2,16 @@
 from enum import Enum
 from typing_extensions import Literal
 
-from langchain_core.messages import HumanMessage, SystemMessage
+# from langchain_core.messages import HumanMessage as LangchainHumanMessage
+# from langchain_core.messages import AIMessage as LangchainAIMessage
+# from langchain_core.messages import SystemMessage as LangchainSystemMessage
 from langchain_core.runnables import RunnableConfig
+# from langchain_core.outputs import LLMResult, ChatGeneration
+from langchain_core.messages import HumanMessage, SystemMessage
+
 # from langchain_ollama import ChatOllama
 from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from langgraph.graph import START, END, StateGraph
 
 from assistant.configuration import Configuration, SearchAPI
