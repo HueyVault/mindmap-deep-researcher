@@ -1,0 +1,28 @@
+
+2.3 Mind Map Agent
+We construct a Mind Map to store and structure
+the real-time reasoning context of the reasoning
+model. This Mind Map is built by transforming
+raw reasoning chains into a structured knowledge
+graph. Specifically, we use a graph-construction
+LLM to extract entities from the reasoning chain
+and identify semantic relationships between related
+entities, following a process similar to that used in
+GraphRAG (Edge et al., 2024).
+The Mind Map serves two primary functions.
+First, it clusters reasoning context into distinct
+groups and summarizes each theme. This is
+achieved by applying community clustering (Edge
+et al., 2024) on the knowledge graph and using an
+LLM to generate concise summaries for each group.
+Second, the knowledge graph can be queried with
+specific questions, such as "Who was Jason's maternal great-grandfather?" Using standard retrievalaugmented generation (RAG) on the knowledge
+graph (Edge et al., 2024), we retrieve and return
+relevant information.
+These functions integrate the Mind Map into
+various aspects of the Agentic Reasoning process.
+It provides contextual reasoning support to external tools, enabling them to generate more contextaware responses (as discussed in later sections).
+Additionally, when the reasoning model is uncertain about its claims or loses track in an extended
+reasoning process, it can query the Mind Map for
+relevant information, treating it as an external tool,
+and continue reasoning based on the retrieved answer.

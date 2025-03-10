@@ -4,14 +4,15 @@ from typing_extensions import TypedDict, Annotated
 
 @dataclass(kw_only=True)
 class SummaryState:
-    research_topic: str = field(default=None) # Report topic     
-    search_query: str = field(default=None) # Search query
-    web_research_results: Annotated[list, operator.add] = field(default_factory=list) 
-    sources_gathered: Annotated[list, operator.add] = field(default_factory=list) 
-    research_loop_count: int = field(default=0) # Research loop count
-    running_summary: str = field(default=None) # Final report
-    should_continue: bool = field(default=True)
-    
+    research_topic: str = field(default=None)
+    # Annotated[list, operator.add] 제거하고 일반 리스트로 변경
+    web_research_results: list = field(default_factory=list)
+    running_summary: str = field(default=None)
+    needs_external_info: bool = field(default=False)
+    search_query: str = field(default=None)
+    research_loop_count: int = field(default=0)
+    query_type: str = field(default=None)  # 'web_search' 또는 'mind_map'
+
 @dataclass(kw_only=True)
 class SummaryStateInput:
     research_topic: str = field(default=None) # Report topic     

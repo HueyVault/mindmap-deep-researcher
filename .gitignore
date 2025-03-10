@@ -1,6 +1,24 @@
 
 .venv
+/venv
 .env
 ollama.log
-/apps/ollama-deep-researcher/src/assistant/__pycache__
-*.pyc
+# Python
+__pycache__/
+
+# LangGraph
+.langgraph_api/
+*.pckl
+
+# Logs
+nohup.out
+*.log
+
+# Python packaging
+*.egg-info/
+dist/
+build/
+
+.streamlit/secrets.toml
+
+api_cache/

@@ -1,80 +1,140 @@
-query_writer_instructions="""Your goal is to generate a targeted web search query.
-The query will gather information related to a specific topic.
+query_writer_instructions="""목표: 주어진 주제에 대한 웹 검색 쿼리를 생성합니다.
 
-<TOPIC>
+<주제>
 {research_topic}
-</TOPIC>
+</주제>
 
-<FORMAT>
-Format your response as a JSON object with ALL three of these exact keys:
-   - "query": The actual search query string (max 400 characters)
-   - "aspect": The specific aspect of the topic being researched
-   - "rationale": Brief explanation of why this query is relevant
-</FORMAT>
+<형식>
+다음 세 가지 키를 포함하는 JSON 객체로 응답해주세요:
+   - "query": 실제 검색 쿼리 문자열 (400자 이내)
+   - "aspect": 연구 주제의 구체적인 측면
+   - "rationale": 이 쿼리가 적절한 이유에 대한 간단한 설명
 
-<EXAMPLE>
-Example output:
+<예시>
 {{
-    "query": "machine learning transformer architecture explained",
-    "aspect": "technical architecture",
-    "rationale": "Understanding the fundamental structure of transformer models"
+    "query": "한국 핀테크 산업 현황 및 규제 동향 2024",
+    "aspect": "산업 현황 분석",
+    "rationale": "최신 핀테크 산업 동향과 규제 환경 파악"
 }}
-</EXAMPLE>
+</예시>
 
-Important: Ensure your query does not exceed 400 characters.
-Provide your response in JSON format:"""
+중요: 쿼리는 400자를 넘지 않도록 해주세요.
+JSON 형식으로 응답해주세요:"""
 
 summarizer_instructions="""
-<GOAL>
-Generate a high-quality summary of the web search results and keep it concise / related to the user topic.
-</GOAL>
+<목표>
+웹 검색 결과를 바탕으로 고품질의 요약을 생성하고, 사용자 주제와 관련된 핵심 내용을 간단명료하게 정리합니다.
+</목표>
 
-<REQUIREMENTS>
-When creating a NEW summary:
-1. Highlight the most relevant information related to the user topic from the search results
-2. Ensure a coherent flow of information
+<요구사항>
+새로운 요약 작성 시:
+1. 검색 결과에서 사용자 주제와 가장 관련 있는 정보를 강조
+2. 정보의 논리적 흐름 유지
 
-When EXTENDING an existing summary:                                                                                                                 
-1. Read the existing summary and new search results carefully.                                                    
-2. Compare the new information with the existing summary.                                                         
-3. For each piece of new information:                                                                             
-    a. If it's related to existing points, integrate it into the relevant paragraph.                               
-    b. If it's entirely new but relevant, add a new paragraph with a smooth transition.                            
-    c. If it's not relevant to the user topic, skip it.                                                            
-4. Ensure all additions are relevant to the user's topic.                                                         
-5. Verify that your final output differs from the input summary.                                                                                                                                                            
-< /REQUIREMENTS >
+기존 요약 확장 시:                                                                                                                 
+1. 기존 요약과 새로운 검색 결과를 주의 깊게 검토                                                    
+2. 새로운 정보와 기존 내용 비교                                                         
+3. 각각의 새로운 정보에 대해:                                                                             
+    a. 기존 내용과 관련이 있다면, 해당 단락에 통합                               
+    b. 완전히 새로운 내용이면서 관련성이 있다면, 자연스러운 전개로 새 단락 추가                            
+    c. 사용자 주제와 관련이 없다면 제외                                                            
+4. 모든 추가 내용이 사용자 주제와 관련성 유지                                                         
+5. 최종 출력이 입력 요약과 차별화되는지 확인                                                                                                                                                            
 
-< FORMATTING >
-- Start directly with the updated summary, without preamble or titles. Do not use XML tags in the output.  
-< /FORMATTING >"""
+<형식>
+- 서론이나 제목 없이 바로 업데이트된 요약 시작
+- XML 태그 사용하지 않기"""
 
-reflection_instructions = """You are an expert research assistant analyzing a summary about {research_topic}.
+reflection_instructions = """당신은 {research_topic}에 대한 요약을 분석하는 전문 연구 조교입니다.
 
-<GOAL>
-1. Identify knowledge gaps or areas that need deeper exploration
-2. Generate a follow-up question that would help expand your understanding
-3. Focus on technical details, implementation specifics, or emerging trends that weren't fully covered
-</GOAL>
+<목표>
+1. 지식 격차나 더 깊이 탐구가 필요한 영역 파악
+2. 이해를 넓히는데 도움이 될 후속 질문 생성
+3. 다루지 않은 기술적 세부사항, 구현 방식, 최신 트렌드에 초점
 
-<REQUIREMENTS>
-- Ensure the follow-up question is self-contained and includes necessary context for web search
-- The follow-up query must not exceed 400 characters
-</REQUIREMENTS>
+<요구사항>
+- 웹 검색에 적합하도록 자체적으로 완결된 질문 작성
+- 후속 질문은 400자를 넘지 않아야 함
 
-<FORMAT>
-Format your response as a JSON object with these exact keys:
-- knowledge_gap: Describe what information is missing or needs clarification
-- follow_up_query: Write a specific question to address this gap (max 400 characters)
-</FORMAT>
+<형식>
+다음 키를 포함하는 JSON 객체로 응답:
+- knowledge_gap: 부족하거나 명확히 할 필요가 있는 정보 설명
+- follow_up_query: 이 격차를 해소하기 위한 구체적인 질문 (400자 이내)
 
-<EXAMPLE>
-Example output:
+<예시>
 {{
-    "knowledge_gap": "The summary lacks information about performance metrics and benchmarks",
-    "follow_up_query": "What are typical performance benchmarks and metrics used to evaluate [specific technology]?"
+    "knowledge_gap": "현재 요약에는 구체적인 규제 준수 비용과 대응 방안이 부족함",
+    "follow_up_query": "국내 핀테크 기업들의 금융 규제 준수 비용과 주요 대응 전략은?"
 }}
-</EXAMPLE>
+</예시>
 
-Important: Keep your follow-up query under 400 characters.
-Provide your analysis in JSON format:"""
+중요: 후속 질문은 400자 이내로 유지해주세요.
+JSON 형식으로 분석을 제공해주세요:"""
+
+review_instructions =  """당신은 {research_topic}에 대한 연구 내용을 검토하고 개선하는 전문 편집자입니다.
+
+<목표>
+1. 현재까지의 요약을 평가하고 개선
+2. 연구 주제와의 관련성 검증
+3. 핵심 내용 재정리
+
+<평가 기준>
+1. 주제 관련성: 모든 내용이 연구 주제와 직접적으로 관련되어야 함
+2. 논리적 구조: 내용이 논리적으로 연결되고 잘 구조화되어야 함
+3. 정보의 품질: 중복되거나 불필요한 내용 제거
+
+<형식>
+다음 키를 포함하는 JSON 객체로 응답:
+- "evaluation": 평가 결과 객체
+  - "relevance": 주제 관련성 평가 (0-10)
+  - "coherence": 논리적 구조 평가 (0-10)
+  - "issues": 개선이 필요한 부분들의 배열
+- "refined_summary": 개선된 요약 내용
+- "removed_content": 제거된 내용과 이유의 배열
+
+<예시>
+{{
+    "evaluation": {{
+        "relevance": 8,
+        "coherence": 7,
+        "issues": ["금융 정책 영향 분석이 부족", "시장 데이터 업데이트 필요"]
+    }},
+    "refined_summary": "개선된 요약 내용이 여기에 들어갑니다...",
+    "removed_content": ["중복된 규제 설명 제거", "관련성 낮은 해외 사례 제외"]
+}}
+
+중요: JSON 형식으로 응답해주세요."""
+
+
+reasoner_instructions = """당신은 주어진 주제에 대해 심층적인 분석과 추론을 수행하는 전문 연구원입니다.
+
+<목표>
+주제에 대한 깊이 있는 이해와 통찰을 제공하는 것이 목적입니다.
+
+<추론 프로세스>
+1. 정보 통합
+   - 여러 출처의 정보를 비교/대조
+   - 상충되는 관점 식별
+   - 핵심 트렌드와 패턴 파악
+
+2. 심층 분석
+   - 표면적 사실을 넘어선 근본 원인 탐구
+   - 다양한 관점에서의 영향 평가
+   - 잠재적 함의와 시사점 도출
+
+3. 비판적 사고
+   - 주장의 타당성 평가
+   - 한계점과 제약사항 식별
+   - 대안적 해석 제시
+
+<출력 형식>
+{
+    "core_insights": ["주제에 대한 핵심 통찰"],
+    "detailed_analysis": {
+        "key_findings": ["주요 발견사항"],
+        "implications": ["시사점과 영향"],
+        "challenges": ["도전과제와 한계점"]
+    },
+    "synthesis": "모든 분석을 통합한 종합적 결론",
+    "future_directions": ["향후 발전 방향 및 제언"]
+}"""
