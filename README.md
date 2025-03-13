@@ -33,33 +33,56 @@ DeepResearch를 직접 구현하고 서비스화한 프로젝트입니다. 특�
 
 ### 화면
 
+<style>
+.image-container {
+    display: flex; /* Flexbox 레이아웃 사용 */
+    flex-wrap: wrap; /* 이미지들이 한 줄에 넘치면 다음 줄로 이동 */
+    justify-content: space-between; /* 이미지들 사이에 균등한 간격 */
+}
+
+.image-container img {
+    width: 48%; /* 각 이미지의 너비를 컨테이너의 48%로 설정 (약간의 간격 고려) */
+    height: auto; /* 높이는 원본 비율에 맞춰 자동 조절 */
+    margin-bottom: 10px; /* 이미지 아래쪽에 간격 추가 */
+}
+</style>
+
+<div class="image-container">
+
+<div>
 <aside>
 노드 구성 화면 - LangSmith
-
 </aside>
 
-![노드화면.PNG](./document/node.png)
+<img src="./document/node.png" alt="노드화면">
+</div>
 
+<div>
 <aside>
 결과 화면
-
 </aside>
 
-![결과화면.PNG](./document/result.png)
+<img src="./document/result.png" alt="결과화면">
+</div>
+
+<div>
 
 <aside>
 Streamlit 실행 화면
-
 </aside>
 
-![실행화면.PNG](./document/exe.png)
+<img src="./document/exe.png" alt="실행화면">
+</div>
 
+<div>
 <aside>
 Neo4j Graph
-
 </aside>
 
-![관계그래프.PNG](./document/graph.png)
+<img src="./document/graph.png" alt="관계그래프">
+
+</div>
+</div>
 
 결과 파일
 
