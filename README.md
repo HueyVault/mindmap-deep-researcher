@@ -1,16 +1,16 @@
-# **Mind Map 활용 DeepResearch 프로젝트**
+# Mind Map 활용 DeepResearch 프로젝트
 
 ### **개요**
 
 DeepResearch를 직접 구현하고 서비스화한 프로젝트입니다. 특히, reasoning 모델의 추론 능력을 향상시키기 위해 **마인드 맵(Mind Map) 방식**을 도입하였습니다.
 
 - **기간:** 2025.02.12 ~ 2025.03.05
-- **포트폴리오:** [링크](https://experienced-gourd-eae.notion.site/Mind-Map-DeepResearch-1b26e4944b1f80c19476d62103763da1)
-- **배포:** [링크](https://ollama-deep-researcher-3qcnh6x8rmqvktfdbbkjou.streamlit.app/)
+- **GitHub:** [링크](https://github.com/HueyVault/mindmap-deep-researcher)
+- **배포:** [링크](https://mindmap-deep-researcher-zwnhkrzpwbcuffujvzomts.streamlit.app/)
 
 ---
 
-### **사용 도구 및 프레임워크**
+### 사용 도구 및 프레임워크
 
 - **LLM 모델:** Gemini 2.0 Flash (Thinking Exp)
 - **프레임워크 및 라이브러리:** LangGraph, Streamlit, Neo4j, UV
@@ -33,13 +33,37 @@ DeepResearch를 직접 구현하고 서비스화한 프로젝트입니다. 특�
 
 ### 화면
 
-노드 구성 화면 - langsmith 화면
+<aside>
+노드 구성 화면 - LangSmith
 
-streamlit 배포 화면
+</aside>
 
-streamlit 결과 화면
+![노드화면.PNG](./document/node.png)
 
-neo4j graph 화면
+<aside>
+결과 화면
+
+</aside>
+
+![결과화면.PNG](./document/result.png)
+
+<aside>
+Streamlit 실행 화면
+
+</aside>
+
+![실행화면.PNG](./document/exe.png)
+
+<aside>
+Neo4j Graph
+
+</aside>
+
+![관계그래프.PNG](./document/graph.png)
+
+결과 파일
+
+[연구결과_한국의 2025년 금융 시장 전망에 .md](./document/연구결과_한국의_2025년_금융_시장_전망에_.md)
 
 ---
 
@@ -60,4 +84,4 @@ neo4j graph 화면
 ### **참고 자료**
 
 - https://github.com/langchain-ai/ollama-deep-researcher
-- https://arxiv.org/abs/2502.04644
+- [https://arxiv.org/abs/2502.04644](https://arxiv.org/abs/2502.04644)
